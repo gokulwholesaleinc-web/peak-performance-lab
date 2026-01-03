@@ -17,6 +17,7 @@ import {
   Calendar as CalendarIcon,
   Clock,
   User,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,9 +29,12 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { toast } from "sonner";
 import { useBookings, type Booking } from "@/hooks/use-api";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 function getStatusColor(status: Booking["status"]) {
   switch (status) {
@@ -78,9 +82,74 @@ function formatAppointmentTime(scheduledAt: string, durationMins: number) {
 }
 
 export default function CalendarPage() {
+  const queryClient = useQueryClient();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<"week" | "day">("week");
   const [selectedAppointment, setSelectedAppointment] = useState<Booking | null>(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [appointmentToCancel, setAppointmentToCancel] = useState<Booking | null>(null);
+
+  // Cancel appointment mutation
+  const cancelMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await fetch(`/api/bookings/${id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to cancel appointment");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["bookings"] });
+      toast.success("Appointment cancelled successfully");
+      setCancelDialogOpen(false);
+      setAppointmentToCancel(null);
+      setSelectedAppointment(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  // Update appointment status mutation
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      const response = await fetch(`/api/bookings/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to update appointment");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["bookings"] });
+      toast.success("Appointment updated successfully");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const handleCancelClick = (appointment: Booking) => {
+    setAppointmentToCancel(appointment);
+    setCancelDialogOpen(true);
+  };
+
+  const handleConfirmCancel = () => {
+    if (appointmentToCancel) {
+      cancelMutation.mutate(appointmentToCancel.id);
+    }
+  };
+
+  const handleReschedule = () => {
+    toast.info("Reschedule feature coming soon!");
+  };
 
   // Calculate week boundaries
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 }); // Start on Monday
@@ -404,15 +473,59 @@ export default function CalendarPage() {
               )}
 
               <div className="flex gap-2 pt-4">
-                <Button variant="outline" className="flex-1">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={handleReschedule}
+                >
                   Reschedule
                 </Button>
-                <Button variant="destructive" className="flex-1">
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  onClick={() => handleCancelClick(selectedAppointment)}
+                  disabled={selectedAppointment.status === "cancelled" || selectedAppointment.status === "completed"}
+                >
                   Cancel
                 </Button>
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel Confirmation Dialog */}
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Appointment</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to cancel the appointment for{" "}
+              {appointmentToCancel?.client.name}? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setCancelDialogOpen(false)}
+            >
+              Keep Appointment
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmCancel}
+              disabled={cancelMutation.isPending}
+            >
+              {cancelMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Cancelling...
+                </>
+              ) : (
+                "Yes, Cancel"
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

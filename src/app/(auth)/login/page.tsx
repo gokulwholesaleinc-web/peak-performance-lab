@@ -6,7 +6,7 @@ import { Dumbbell } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Mail, Loader2, CheckCircle2, ShieldCheck } from "lucide-react";
+import { Mail, Loader2, CheckCircle2, ShieldCheck, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -36,6 +36,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isAdminLoading, setIsAdminLoading] = useState(false);
+  const [isCustomerLoading, setIsCustomerLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [submittedEmail, setSubmittedEmail] = useState("");
   const [error, setError] = useState("");
@@ -77,8 +78,15 @@ export default function LoginPage() {
     }
   }
 
-  async function handleAdminLogin() {
-    setIsAdminLoading(true);
+  async function handleTestLogin(type: "admin" | "customer") {
+    const isAdmin = type === "admin";
+    const setLoadingState = isAdmin ? setIsAdminLoading : setIsCustomerLoading;
+    const credentials = isAdmin
+      ? { username: "admin", password: "admin" }
+      : { username: "test", password: "test" };
+    const defaultRedirect = isAdmin ? "/admin" : "/dashboard";
+
+    setLoadingState(true);
     setError("");
     try {
       const response = await fetch("/api/auth/login", {
@@ -86,7 +94,7 @@ export default function LoginPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ username: "admin", password: "admin" }),
+        body: JSON.stringify(credentials),
       });
 
       const data = await response.json();
@@ -95,12 +103,11 @@ export default function LoginPage() {
         throw new Error(data.error || "Login failed");
       }
 
-      // Redirect to admin portal
-      router.push(data.redirectTo || "/admin");
+      router.push(data.redirectTo || defaultRedirect);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
-      setIsAdminLoading(false);
+      setLoadingState(false);
     }
   }
 
@@ -156,27 +163,48 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Test Admin Login */}
+          {/* Test Login Buttons */}
           <div className="space-y-3">
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full bg-amber-50 border-amber-200 hover:bg-amber-100 text-amber-900"
-              onClick={handleAdminLogin}
-              disabled={isAdminLoading}
-            >
-              {isAdminLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
-                </>
-              ) : (
-                <>
-                  <ShieldCheck className="mr-2 h-4 w-4" />
-                  Test Admin Login (admin/admin)
-                </>
-              )}
-            </Button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full bg-amber-50 border-amber-200 hover:bg-amber-100 text-amber-900"
+                onClick={() => handleTestLogin("admin")}
+                disabled={isAdminLoading || isCustomerLoading}
+              >
+                {isAdminLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="mr-2 h-4 w-4" />
+                    Admin (admin/admin)
+                  </>
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-900"
+                onClick={() => handleTestLogin("customer")}
+                disabled={isAdminLoading || isCustomerLoading}
+              >
+                {isCustomerLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  <>
+                    <User className="mr-2 h-4 w-4" />
+                    Customer (test/test)
+                  </>
+                )}
+              </Button>
+            </div>
             {error && (
               <p className="text-sm text-red-600 text-center">{error}</p>
             )}

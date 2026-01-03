@@ -22,15 +22,40 @@ const createServiceSchema = z.object({
 
 /**
  * GET /api/services
- * List all active services
+ * List all services (optionally include inactive)
+ * Query params:
+ * - includeInactive: Set to "true" to include inactive services (admin only)
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const allServices = await db
-      .select()
-      .from(services)
-      .where(eq(services.isActive, true))
-      .orderBy(services.name);
+    const { searchParams } = new URL(request.url);
+    const includeInactive = searchParams.get("includeInactive") === "true";
+
+    let allServices;
+
+    if (includeInactive) {
+      // For including inactive services, require admin access
+      try {
+        await requireAdmin();
+        allServices = await db
+          .select()
+          .from(services)
+          .orderBy(services.name);
+      } catch {
+        // If not admin, fall back to active only
+        allServices = await db
+          .select()
+          .from(services)
+          .where(eq(services.isActive, true))
+          .orderBy(services.name);
+      }
+    } else {
+      allServices = await db
+        .select()
+        .from(services)
+        .where(eq(services.isActive, true))
+        .orderBy(services.name);
+    }
 
     return jsonResponse({ data: allServices });
   } catch (error) {

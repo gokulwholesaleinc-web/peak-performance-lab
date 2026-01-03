@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Loader2, XCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,13 +16,25 @@ import Link from "next/link";
 type VerificationState = "loading" | "success" | "error";
 
 function VerifyContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [state, setState] = useState<VerificationState>("loading");
   const [errorMessage, setErrorMessage] = useState<string>("");
 
   useEffect(() => {
     const token = searchParams.get("token");
+    const error = searchParams.get("error");
+
+    // Check if we're coming back from the API with an error
+    if (error) {
+      setState("error");
+      const errorMessages: Record<string, string> = {
+        missing_token: "No verification token provided",
+        invalid_or_expired_token: "This link has expired or already been used",
+        verification_failed: "Verification failed. Please try again.",
+      };
+      setErrorMessage(errorMessages[error] || "Verification failed");
+      return;
+    }
 
     if (!token) {
       setState("error");
@@ -30,31 +42,10 @@ function VerifyContent() {
       return;
     }
 
-    async function verifyToken() {
-      try {
-        const response = await fetch(`/api/auth/verify?token=${token}`);
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.message || "Verification failed");
-        }
-
-        setState("success");
-
-        // Redirect to dashboard after a short delay
-        setTimeout(() => {
-          router.push("/dashboard");
-        }, 1500);
-      } catch (error) {
-        setState("error");
-        setErrorMessage(
-          error instanceof Error ? error.message : "Verification failed"
-        );
-      }
-    }
-
-    verifyToken();
-  }, [searchParams, router]);
+    // Redirect to API which handles verification and sets cookie
+    // The API will redirect to dashboard on success or back with error
+    window.location.href = `/api/auth/verify?token=${token}`;
+  }, [searchParams]);
 
   if (state === "loading") {
     return (

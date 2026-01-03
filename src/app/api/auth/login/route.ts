@@ -24,41 +24,61 @@ export async function POST(request: Request) {
 
     const { username, password } = result.data;
 
-    // Test admin login - only "admin/admin" works
-    if (username === 'admin' && password === 'admin') {
-      // Find or create admin user
-      let [adminUser] = await db
+    // Test user credentials configuration
+    const testUsers = {
+      admin: {
+        email: 'admin@peakperformancelab.com',
+        name: 'Admin',
+        role: 'admin' as const,
+        redirectTo: '/admin',
+      },
+      test: {
+        email: 'test@example.com',
+        name: 'Test Customer',
+        role: 'client' as const,
+        redirectTo: '/dashboard',
+      },
+    };
+
+    // Check for test credentials (admin/admin or test/test)
+    const testUserConfig = username in testUsers && username === password
+      ? testUsers[username as keyof typeof testUsers]
+      : null;
+
+    if (testUserConfig) {
+      // Find or create test user
+      let [testUser] = await db
         .select()
         .from(users)
-        .where(eq(users.email, 'admin@peakperformancelab.com'))
+        .where(eq(users.email, testUserConfig.email))
         .limit(1);
 
-      if (!adminUser) {
-        // Create admin user
-        const [newAdmin] = await db
+      if (!testUser) {
+        // Create test user
+        const [newUser] = await db
           .insert(users)
           .values({
-            email: 'admin@peakperformancelab.com',
-            name: 'Admin',
-            role: 'admin',
+            email: testUserConfig.email,
+            name: testUserConfig.name,
+            role: testUserConfig.role,
           })
           .returning();
-        adminUser = newAdmin;
+        testUser = newUser;
       }
 
       // Create session
-      const sessionToken = await createSession(adminUser.id);
+      const sessionToken = await createSession(testUser.id);
       await setSessionCookie(sessionToken);
 
       return NextResponse.json({
         success: true,
         user: {
-          id: adminUser.id,
-          email: adminUser.email,
-          name: adminUser.name,
-          role: adminUser.role,
+          id: testUser.id,
+          email: testUser.email,
+          name: testUser.name,
+          role: testUser.role,
         },
-        redirectTo: '/admin',
+        redirectTo: testUserConfig.redirectTo,
       });
     }
 

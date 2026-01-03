@@ -22,15 +22,40 @@ const createPackageSchema = z.object({
 
 /**
  * GET /api/packages
- * List all active packages
+ * List all packages (optionally include inactive)
+ * Query params:
+ * - includeInactive: Set to "true" to include inactive packages (admin only)
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const allPackages = await db
-      .select()
-      .from(packages)
-      .where(eq(packages.isActive, true))
-      .orderBy(packages.name);
+    const { searchParams } = new URL(request.url);
+    const includeInactive = searchParams.get("includeInactive") === "true";
+
+    let allPackages;
+
+    if (includeInactive) {
+      // For including inactive packages, require admin access
+      try {
+        await requireAdmin();
+        allPackages = await db
+          .select()
+          .from(packages)
+          .orderBy(packages.name);
+      } catch {
+        // If not admin, fall back to active only
+        allPackages = await db
+          .select()
+          .from(packages)
+          .where(eq(packages.isActive, true))
+          .orderBy(packages.name);
+      }
+    } else {
+      allPackages = await db
+        .select()
+        .from(packages)
+        .where(eq(packages.isActive, true))
+        .orderBy(packages.name);
+    }
 
     return jsonResponse({ data: allPackages });
   } catch (error) {

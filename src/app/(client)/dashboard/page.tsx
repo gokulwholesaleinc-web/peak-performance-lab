@@ -7,6 +7,7 @@ import {
   Receipt,
   ArrowRight,
   Loader2,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,10 +25,19 @@ import {
   useClientPackages,
   useInvoices,
 } from "@/lib/hooks/use-api";
+import { usePayInvoice } from "@/hooks/use-payments";
 
 export default function DashboardPage() {
   const { data: userData, isLoading: userLoading } = useCurrentUser();
   const { data: bookingsData, isLoading: bookingsLoading } = useUpcomingBookings();
+  const payInvoice = usePayInvoice();
+
+  const handlePayInvoice = (invoiceId: string) => {
+    const numericId = parseInt(invoiceId, 10);
+    if (!isNaN(numericId)) {
+      payInvoice.mutate(numericId);
+    }
+  };
   const { data: packagesData, isLoading: packagesLoading } = useClientPackages();
   const { data: invoicesData, isLoading: invoicesLoading } = useInvoices({ limit: 5 });
 
@@ -317,7 +327,20 @@ export default function DashboardPage() {
                       </Badge>
                       {(invoice.status === "sent" ||
                         invoice.status === "overdue") && (
-                        <Button size="sm">Pay Now</Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handlePayInvoice(invoice.id)}
+                          disabled={payInvoice.isPending}
+                        >
+                          {payInvoice.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <>
+                              Pay Now
+                              <ExternalLink className="ml-2 h-4 w-4" />
+                            </>
+                          )}
+                        </Button>
                       )}
                     </div>
                   </div>

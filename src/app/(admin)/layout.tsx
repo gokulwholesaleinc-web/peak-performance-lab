@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Menu, LogOut, User, Bell, Dumbbell } from "lucide-react";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { AdminNav } from "@/components/shared/AdminNav";
@@ -29,7 +30,17 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  async function handleLogout() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      router.push("/login");
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
+  }
 
   return (
     <QueryProvider>
@@ -128,7 +139,10 @@ export default function AdminLayout({
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem className="text-destructive focus:text-destructive">
+                  <DropdownMenuItem
+                    onClick={handleLogout}
+                    className="text-destructive focus:text-destructive"
+                  >
                     <LogOut className="mr-2 h-4 w-4" />
                     Log out
                   </DropdownMenuItem>

@@ -9,14 +9,14 @@ export async function GET(request: Request) {
     const token = searchParams.get('token');
 
     if (!token) {
-      return NextResponse.redirect(`${APP_URL}/login?error=missing_token`);
+      return NextResponse.redirect(`${APP_URL}/verify?error=missing_token`);
     }
 
     // Verify the magic link
     const result = await verifyMagicLink(token);
 
     if (!result) {
-      return NextResponse.redirect(`${APP_URL}/login?error=invalid_or_expired_token`);
+      return NextResponse.redirect(`${APP_URL}/verify?error=invalid_or_expired_token`);
     }
 
     // Set session cookie
@@ -27,6 +27,6 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${APP_URL}${redirectPath}`);
   } catch (error) {
     console.error('Magic link verification error:', error);
-    return NextResponse.redirect(`${APP_URL}/login?error=verification_failed`);
+    return NextResponse.redirect(`${APP_URL}/verify?error=verification_failed`);
   }
 }

@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
+import { useRouter } from "next/navigation";
 import {
   User,
   Mail,
@@ -13,10 +14,12 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Sheet,
   SheetContent,
@@ -41,7 +44,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { toast } from "sonner";
 import { useClients, useBookings, type Client, type Booking } from "@/hooks/use-api";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 function getStatusColor(status: Booking["status"]) {
   switch (status) {
@@ -58,12 +71,123 @@ function getStatusColor(status: Booking["status"]) {
   }
 }
 
+interface ClientFormData {
+  name: string;
+  email: string;
+  phone: string;
+}
+
 export default function ClientsPage() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 20;
+
+  // Dialog states
+  const [addClientDialogOpen, setAddClientDialogOpen] = useState(false);
+  const [editClientDialogOpen, setEditClientDialogOpen] = useState(false);
+  const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
+
+  // Form state
+  const [formData, setFormData] = useState<ClientFormData>({
+    name: "",
+    email: "",
+    phone: "",
+  });
+
+  // Create client mutation
+  const createMutation = useMutation({
+    mutationFn: async (data: ClientFormData) => {
+      const response = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to create client");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+      toast.success("Client created successfully");
+      setAddClientDialogOpen(false);
+      resetForm();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  // Update client mutation
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<ClientFormData> }) => {
+      const response = await fetch(`/api/clients/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to update client");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+      toast.success("Client updated successfully");
+      setEditClientDialogOpen(false);
+      setClientToEdit(null);
+      resetForm();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const resetForm = () => {
+    setFormData({ name: "", email: "", phone: "" });
+  };
+
+  const handleAddClient = () => {
+    resetForm();
+    setAddClientDialogOpen(true);
+  };
+
+  const handleEditClient = (client: Client) => {
+    setClientToEdit(client);
+    setFormData({
+      name: client.name,
+      email: client.email,
+      phone: client.phone || "",
+    });
+    setEditClientDialogOpen(true);
+  };
+
+  const handleSubmitCreate = (e: React.FormEvent) => {
+    e.preventDefault();
+    createMutation.mutate(formData);
+  };
+
+  const handleSubmitEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (clientToEdit) {
+      updateMutation.mutate({
+        id: clientToEdit.id,
+        data: { name: formData.name, phone: formData.phone || undefined },
+      });
+    }
+  };
+
+  const handleBookAppointment = (clientId: string) => {
+    // Navigate to booking page with client pre-selected
+    toast.info("Book appointment feature - navigate to booking with client pre-selected");
+    // Could be implemented as router.push(`/admin/calendar?clientId=${clientId}`);
+  };
 
   // Debounce search
   useMemo(() => {
@@ -116,7 +240,7 @@ export default function ClientsPage() {
             Manage your client database and view their history
           </p>
         </div>
-        <Button>
+        <Button onClick={handleAddClient}>
           <Plus className="mr-2 h-4 w-4" />
           Add Client
         </Button>
@@ -194,8 +318,14 @@ export default function ClientsPage() {
                             }}>
                               View Details
                             </DropdownMenuItem>
-                            <DropdownMenuItem>Edit Client</DropdownMenuItem>
-                            <DropdownMenuItem>Book Appointment</DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditClient(client);
+                            }}>Edit Client</DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => {
+                              e.stopPropagation();
+                              handleBookAppointment(client.id);
+                            }}>Book Appointment</DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -369,8 +499,17 @@ export default function ClientsPage() {
 
               {/* Action buttons */}
               <div className="flex gap-2">
-                <Button className="flex-1">Book Appointment</Button>
-                <Button variant="outline" className="flex-1">
+                <Button
+                  className="flex-1"
+                  onClick={() => handleBookAppointment(selectedClient.id)}
+                >
+                  Book Appointment
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => handleEditClient(selectedClient)}
+                >
                   Edit Client
                 </Button>
               </div>
@@ -378,6 +517,144 @@ export default function ClientsPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Add Client Dialog */}
+      <Dialog open={addClientDialogOpen} onOpenChange={setAddClientDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Client</DialogTitle>
+            <DialogDescription>
+              Enter the client details below to create a new client account.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmitCreate} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Full Name</Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
+                placeholder="John Smith"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={formData.email}
+                onChange={(e) =>
+                  setFormData({ ...formData, email: e.target.value })
+                }
+                placeholder="john@example.com"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone (optional)</Label>
+              <Input
+                id="phone"
+                type="tel"
+                value={formData.phone}
+                onChange={(e) =>
+                  setFormData({ ...formData, phone: e.target.value })
+                }
+                placeholder="(312) 555-0100"
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setAddClientDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  "Add Client"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Client Dialog */}
+      <Dialog open={editClientDialogOpen} onOpenChange={setEditClientDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Client</DialogTitle>
+            <DialogDescription>
+              Update the client information below.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmitEdit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Full Name</Label>
+              <Input
+                id="edit-name"
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-email">Email</Label>
+              <Input
+                id="edit-email"
+                type="email"
+                value={formData.email}
+                disabled
+              />
+              <p className="text-xs text-muted-foreground">
+                Email cannot be changed
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-phone">Phone</Label>
+              <Input
+                id="edit-phone"
+                type="tel"
+                value={formData.phone}
+                onChange={(e) =>
+                  setFormData({ ...formData, phone: e.target.value })
+                }
+                placeholder="(312) 555-0100"
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditClientDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Changes"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
