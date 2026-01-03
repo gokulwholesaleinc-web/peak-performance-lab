@@ -198,7 +198,7 @@ export default function HomePage() {
             </div>
           </div>
           <div className="border-t border-primary-foreground/20 mt-8 pt-8 text-center text-primary-foreground/70">
-            <p>&copy; {new Date().getFullYear()} Peak Performance Lab. All rights reserved.</p>
+            <p suppressHydrationWarning>&copy; {new Date().getFullYear()} Peak Performance Lab. All rights reserved.</p>
           </div>
         </div>
       </footer>
