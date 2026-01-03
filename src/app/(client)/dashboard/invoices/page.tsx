@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { useInvoices, type Invoice } from "@/lib/hooks/use-api";
+import { useInvoices, type Invoice } from "@/hooks/use-api";
 import { usePayInvoice } from "@/hooks/use-payments";
 
 const statusConfig = {

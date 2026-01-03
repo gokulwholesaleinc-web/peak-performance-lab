@@ -1,4 +1,10 @@
-import { useQuery, useMutation, useQueryClient, UseQueryOptions, UseMutationOptions } from "@tanstack/react-query";
+"use client";
+
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
+// ============================================
+// Shared Types & Utilities
+// ============================================
 
 // Base API error class
 export class ApiError extends Error {
@@ -14,6 +20,7 @@ export class ApiError extends Error {
 // Generic API response type
 export interface ApiResponse<T> {
   data: T;
+  error?: string;
   message?: string;
 }
 
@@ -30,10 +37,7 @@ export interface PaginatedResponse<T> {
 }
 
 // Base fetch helper with error handling
-async function apiFetch<T>(
-  url: string,
-  options?: RequestInit
-): Promise<T> {
+async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...options,
     headers: {
@@ -50,7 +54,31 @@ async function apiFetch<T>(
   return response.json();
 }
 
-// ============ Services API ============
+// ============================================
+// User / Auth Hooks (Client Portal)
+// ============================================
+
+export interface CurrentUser {
+  id: string;
+  email: string;
+  name: string | null;
+  role: "admin" | "client";
+  createdAt: string;
+}
+
+export function useCurrentUser() {
+  return useQuery({
+    queryKey: ["currentUser"],
+    queryFn: () => apiFetch<{ user: CurrentUser }>("/api/auth/me"),
+    retry: false,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+}
+
+// ============================================
+// Services API (Admin & Client)
+// ============================================
+
 export interface Service {
   id: number;
   name: string;
@@ -141,7 +169,10 @@ export function useDeleteService() {
   });
 }
 
-// ============ Packages API ============
+// ============================================
+// Packages API (Admin)
+// ============================================
+
 export interface Package {
   id: number;
   name: string;
@@ -222,7 +253,66 @@ export function useDeletePackage() {
   });
 }
 
-// ============ Clients API ============
+// ============================================
+// Available Packages (Client Portal - for purchase)
+// ============================================
+
+export interface AvailablePackage {
+  id: number;
+  name: string;
+  description: string | null;
+  sessionCount: number;
+  price: string;
+  validityDays: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export function useAvailablePackages() {
+  return useQuery({
+    queryKey: ["availablePackages"],
+    queryFn: () => apiFetch<{ data: AvailablePackage[] }>("/api/packages"),
+    staleTime: 10 * 60 * 1000, // 10 minutes
+  });
+}
+
+// ============================================
+// Client Packages (Client Portal - purchased packages)
+// ============================================
+
+export interface ClientPackage {
+  id: string;
+  name: string;
+  description: string | null;
+  sessionsUsed: number;
+  sessionsRemaining: number;
+  sessionsTotal: number;
+  purchasedAt: string;
+  expiresAt: string | null;
+  status: "active" | "expired" | "depleted";
+  serviceType: string;
+  packageId: number;
+}
+
+export interface ClientPackagesResponse {
+  data: {
+    active: ClientPackage[];
+    inactive: ClientPackage[];
+    all: ClientPackage[];
+  };
+}
+
+export function useClientPackages() {
+  return useQuery({
+    queryKey: ["clientPackages"],
+    queryFn: () => apiFetch<ClientPackagesResponse>("/api/client/packages"),
+  });
+}
+
+// ============================================
+// Clients API (Admin)
+// ============================================
+
 export interface Client {
   id: string;
   email: string;
@@ -256,7 +346,80 @@ export function useClients(options?: { search?: string; page?: number; limit?: n
   });
 }
 
-// ============ Bookings API ============
+// ============================================
+// Client Profile (Client Portal)
+// ============================================
+
+export interface ClientProfile {
+  id: string;
+  email: string;
+  name: string | null;
+  phone: string | null;
+  role: "client";
+  createdAt: string;
+  updatedAt: string;
+  appointments: Array<{
+    id: number;
+    scheduledAt: string;
+    durationMins: number;
+    status: string;
+    locationType: string;
+    locationAddress: string | null;
+    notes: string | null;
+    createdAt: string;
+    service: {
+      id: number;
+      name: string;
+      price: string;
+    };
+  }>;
+  packages: Array<{
+    id: number;
+    remainingSessions: number;
+    purchasedAt: string;
+    expiresAt: string;
+    package: {
+      id: number;
+      name: string;
+      sessionCount: number;
+      price: string;
+    };
+  }>;
+}
+
+export function useClientProfile(clientId: string | undefined) {
+  return useQuery({
+    queryKey: ["clientProfile", clientId],
+    queryFn: () => apiFetch<{ data: ClientProfile }>(`/api/clients/${clientId}`),
+    enabled: !!clientId,
+  });
+}
+
+export interface UpdateProfileData {
+  name?: string;
+  phone?: string | null;
+}
+
+export function useUpdateProfile() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ clientId, data }: { clientId: string; data: UpdateProfileData }) =>
+      apiFetch<{ data: ClientProfile }>(`/api/clients/${clientId}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["clientProfile", variables.clientId] });
+      queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+    },
+  });
+}
+
+// ============================================
+// Bookings / Appointments API (Admin & Client)
+// ============================================
+
 export interface Booking {
   id: number;
   scheduledAt: string;
@@ -269,7 +432,7 @@ export interface Booking {
   updatedAt: string;
   client: {
     id: string;
-    name: string;
+    name: string | null;
     email: string;
     phone: string | null;
   };
@@ -281,29 +444,34 @@ export interface Booking {
   };
 }
 
-export function useBookings(options?: {
+// Alias for client portal compatibility
+export type Appointment = Booking;
+
+export interface BookingsParams {
   startDate?: string;
   endDate?: string;
   status?: string;
   clientId?: string;
   page?: number;
   limit?: number;
-}) {
-  const { startDate, endDate, status, clientId, page = 1, limit = 100 } = options || {};
+}
+
+export function useBookings(params: BookingsParams = {}) {
+  const { startDate, endDate, status, clientId, page = 1, limit = 100 } = params;
 
   return useQuery({
     queryKey: ["bookings", { startDate, endDate, status, clientId, page, limit }],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      if (startDate) params.set("startDate", startDate);
-      if (endDate) params.set("endDate", endDate);
-      if (status) params.set("status", status);
-      if (clientId) params.set("clientId", clientId);
-      params.set("page", String(page));
-      params.set("limit", String(limit));
+      const queryParams = new URLSearchParams();
+      if (startDate) queryParams.set("startDate", startDate);
+      if (endDate) queryParams.set("endDate", endDate);
+      if (status) queryParams.set("status", status);
+      if (clientId) queryParams.set("clientId", clientId);
+      queryParams.set("page", String(page));
+      queryParams.set("limit", String(limit));
 
       const response = await apiFetch<PaginatedResponse<Booking>>(
-        `/api/bookings?${params.toString()}`
+        `/api/bookings?${queryParams.toString()}`
       );
       return response;
     },
@@ -318,7 +486,125 @@ export function useTodaysBookings() {
   return useBookings({ startDate, endDate, limit: 50 });
 }
 
-// ============ Dashboard Stats API ============
+export function useUpcomingBookings() {
+  const today = new Date().toISOString();
+  return useBookings({ startDate: today, status: "pending" });
+}
+
+// ============================================
+// Booking Availability & Creation (Client Portal)
+// ============================================
+
+export interface TimeSlot {
+  startTime: string;
+  endTime: string;
+}
+
+export interface AvailabilityResponse {
+  data: {
+    date: string;
+    service: {
+      id: number;
+      name: string;
+      durationMins: number;
+    };
+    slots: TimeSlot[];
+  };
+}
+
+export function useAvailability(date: string | null, serviceId: number | null) {
+  return useQuery({
+    queryKey: ["availability", date, serviceId],
+    queryFn: () =>
+      apiFetch<AvailabilityResponse>(
+        `/api/bookings/availability?date=${date}&serviceId=${serviceId}`
+      ),
+    enabled: !!date && !!serviceId,
+  });
+}
+
+export interface CreateBookingData {
+  serviceId: number;
+  scheduledAt: string;
+  locationType: "mobile" | "virtual";
+  locationAddress?: string;
+  notes?: string;
+  clientId?: string;
+}
+
+export function useCreateBooking() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: CreateBookingData) =>
+      apiFetch<{ data: Appointment }>("/api/bookings", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+    },
+  });
+}
+
+export function useCancelBooking() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (bookingId: number) =>
+      apiFetch<{ data: Appointment; message: string }>(`/api/bookings/${bookingId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+    },
+  });
+}
+
+// ============================================
+// Invoices API (Client Portal)
+// ============================================
+
+export interface Invoice {
+  id: string;
+  number: string;
+  date: string;
+  dueDate: string | null;
+  status: "draft" | "sent" | "paid" | "cancelled" | "overdue";
+  amount: number;
+  paidAt: string | null;
+  stripeInvoiceId: string | null;
+  payments: {
+    id: number;
+    amount: number;
+    method: string | null;
+    paidAt: string;
+  }[];
+}
+
+export function useInvoices(params: { status?: string; page?: number; limit?: number } = {}) {
+  const queryParams = new URLSearchParams();
+  if (params.status) queryParams.set("status", params.status);
+  if (params.page) queryParams.set("page", params.page.toString());
+  if (params.limit) queryParams.set("limit", params.limit.toString());
+
+  const queryString = queryParams.toString();
+  const url = `/api/invoices${queryString ? `?${queryString}` : ""}`;
+
+  return useQuery({
+    queryKey: ["invoices", params],
+    queryFn: () => apiFetch<PaginatedResponse<Invoice>>(url),
+  });
+}
+
+// ============================================
+// Dashboard Stats API (Admin)
+// ============================================
+
 export interface DashboardStats {
   totalClients: number;
   upcomingAppointments: number;
@@ -357,7 +643,10 @@ export function useDashboardStats() {
   });
 }
 
-// ============ Activity Feed ============
+// ============================================
+// Activity Feed (Admin)
+// ============================================
+
 export interface ActivityItem {
   id: string;
   type: "booking" | "payment" | "client" | "cancellation";

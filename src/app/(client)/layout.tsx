@@ -31,7 +31,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { useCurrentUser } from "@/lib/hooks/use-api";
+import { useCurrentUser } from "@/hooks/use-api";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: Home },

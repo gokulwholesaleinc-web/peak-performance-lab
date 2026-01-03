@@ -35,21 +35,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { useBookings, type Booking } from "@/hooks/use-api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-
-function getStatusColor(status: Booking["status"]) {
-  switch (status) {
-    case "confirmed":
-      return "default";
-    case "pending":
-      return "secondary";
-    case "completed":
-      return "outline";
-    case "cancelled":
-      return "destructive";
-    default:
-      return "secondary";
-  }
-}
+import { getStatusColor, getAppointmentTimes } from "@/lib/utils";
 
 function getStatusBgColor(status: Booking["status"]) {
   switch (status) {
@@ -71,15 +57,6 @@ const timeSlots = Array.from({ length: 12 }, (_, i) => {
   const hour = i + 8; // Start at 8 AM
   return `${hour.toString().padStart(2, "0")}:00`;
 });
-
-function formatAppointmentTime(scheduledAt: string, durationMins: number) {
-  const start = new Date(scheduledAt);
-  const end = new Date(start.getTime() + durationMins * 60 * 1000);
-  return {
-    startTime: format(start, "HH:mm"),
-    endTime: format(end, "HH:mm"),
-  };
-}
 
 export default function CalendarPage() {
   const queryClient = useQueryClient();
@@ -296,7 +273,7 @@ export default function CalendarPage() {
                         dayAppointmentsList
                           .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
                           .map((appointment) => {
-                            const { startTime } = formatAppointmentTime(appointment.scheduledAt, appointment.durationMins);
+                            const { startTime } = getAppointmentTimes(appointment.scheduledAt, appointment.durationMins);
                             return (
                               <button
                                 key={appointment.id}
@@ -348,7 +325,7 @@ export default function CalendarPage() {
                       {slotAppointments.length > 0 ? (
                         <div className="space-y-1">
                           {slotAppointments.map((appointment) => {
-                            const { startTime, endTime } = formatAppointmentTime(appointment.scheduledAt, appointment.durationMins);
+                            const { startTime, endTime } = getAppointmentTimes(appointment.scheduledAt, appointment.durationMins);
                             return (
                               <button
                                 key={appointment.id}
@@ -426,7 +403,7 @@ export default function CalendarPage() {
                   <Clock className="h-4 w-4 text-muted-foreground" />
                   <span>
                     {(() => {
-                      const { startTime, endTime } = formatAppointmentTime(
+                      const { startTime, endTime } = getAppointmentTimes(
                         selectedAppointment.scheduledAt,
                         selectedAppointment.durationMins
                       );

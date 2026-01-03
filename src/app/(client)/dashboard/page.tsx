@@ -24,8 +24,9 @@ import {
   useUpcomingBookings,
   useClientPackages,
   useInvoices,
-} from "@/lib/hooks/use-api";
+} from "@/hooks/use-api";
 import { usePayInvoice } from "@/hooks/use-payments";
+import { transformBookingToAppointment } from "@/lib/utils";
 
 export default function DashboardPage() {
   const { data: userData, isLoading: userLoading } = useCurrentUser();
@@ -57,26 +58,7 @@ export default function DashboardPage() {
   const recentInvoices = invoicesData?.data || [];
 
   // Transform appointments to match AppointmentCard format
-  const formattedAppointments = upcomingAppointments.map((apt) => ({
-    id: apt.id.toString(),
-    serviceName: apt.service.name,
-    date: new Date(apt.scheduledAt),
-    startTime: new Date(apt.scheduledAt).toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }),
-    endTime: new Date(
-      new Date(apt.scheduledAt).getTime() + apt.durationMins * 60 * 1000
-    ).toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }),
-    status: apt.status === "pending" ? "scheduled" : apt.status,
-    locationType: apt.locationType,
-    location: apt.locationAddress || undefined,
-  }));
+  const formattedAppointments = upcomingAppointments.map(transformBookingToAppointment);
 
   // Calculate pending invoices total
   const pendingInvoices = recentInvoices.filter(

@@ -22,7 +22,7 @@ import {
   useClientPackages,
   useCreateBooking,
   type Service,
-} from "@/lib/hooks/use-api";
+} from "@/hooks/use-api";
 
 export default function BookPage() {
   const router = useRouter();
@@ -119,7 +119,7 @@ export default function BookPage() {
   }
 
   // Transform services data for BookingWizard
-  const services: Service[] = servicesData?.data || [];
+  const services: Service[] = servicesData || [];
 
   // Transform packages data for BookingWizard
   const activePackages = (packagesData?.data?.active || []).map((pkg) => ({

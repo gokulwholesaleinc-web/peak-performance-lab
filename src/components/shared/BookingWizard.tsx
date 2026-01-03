@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-import { useAvailability, useCreateBooking, type Service } from "@/lib/hooks/use-api";
+import { useAvailability, useCreateBooking, type Service } from "@/hooks/use-api";
 
 export interface ActivePackage {
   id: string;

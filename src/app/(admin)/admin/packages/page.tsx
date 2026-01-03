@@ -40,6 +40,12 @@ import {
   type Package,
   type PackageFormData,
 } from "@/hooks/use-api";
+import {
+  PageHeader,
+  LoadingSpinner,
+  EmptyState,
+  ConfirmationDialog,
+} from "@/components/shared";
 
 export default function PackagesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -165,28 +171,25 @@ export default function PackagesPage() {
 
   const isSubmitting = createMutation.isPending || updateMutation.isPending;
 
+  if (isLoading) {
+    return <LoadingSpinner />;
+  }
+
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Packages</h1>
-          <p className="text-muted-foreground">
-            Create and manage session packages with discounts
-          </p>
-        </div>
+      <PageHeader
+        title="Packages"
+        description="Create and manage session packages with discounts"
+      >
         <Button onClick={handleAddNew}>
           <Plus className="mr-2 h-4 w-4" />
           Add Package
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Packages grid */}
-      {isLoading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        </div>
-      ) : packages && packages.length > 0 ? (
+      {packages && packages.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {packages.map((pkg) => {
             const discount = getDiscountBadge(pkg);
@@ -280,19 +283,12 @@ export default function PackagesPage() {
           })}
         </div>
       ) : (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <PackageIcon className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium">No packages yet</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Create your first package to offer discounted session bundles
-            </p>
-            <Button onClick={handleAddNew}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Package
-            </Button>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={PackageIcon}
+          title="No packages yet"
+          description="Create your first package to offer discounted session bundles"
+          action={{ label: "Add Package", onClick: handleAddNew }}
+        />
       )}
 
       {/* Add/Edit Dialog */}
@@ -411,32 +407,16 @@ export default function PackagesPage() {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Package</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &quot;{packageToDelete?.name}
-              &quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteConfirmOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleConfirmDelete}
-              disabled={deleteMutation.isPending}
-            >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmationDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title="Delete Package"
+        description={`Are you sure you want to delete "${packageToDelete?.name}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        onConfirm={handleConfirmDelete}
+        isLoading={deleteMutation.isPending}
+        variant="destructive"
+      />
     </div>
   );
 }

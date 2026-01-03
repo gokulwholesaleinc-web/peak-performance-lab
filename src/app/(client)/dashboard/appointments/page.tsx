@@ -26,7 +26,8 @@ import {
 import { AppointmentCard } from "@/components/shared/AppointmentCard";
 import Link from "next/link";
 import { toast } from "sonner";
-import { useBookings, useCancelBooking } from "@/lib/hooks/use-api";
+import { useBookings, useCancelBooking } from "@/hooks/use-api";
+import { transformBookingToAppointment } from "@/lib/utils";
 
 export default function AppointmentsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -83,26 +84,7 @@ export default function AppointmentsPage() {
   const appointments = appointmentsData?.data || [];
 
   // Transform appointments for AppointmentCard
-  const formattedAppointments = appointments.map((apt) => ({
-    id: apt.id.toString(),
-    serviceName: apt.service.name,
-    date: new Date(apt.scheduledAt),
-    startTime: new Date(apt.scheduledAt).toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }),
-    endTime: new Date(
-      new Date(apt.scheduledAt).getTime() + apt.durationMins * 60 * 1000
-    ).toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }),
-    status: apt.status === "pending" ? "scheduled" : apt.status,
-    locationType: apt.locationType,
-    location: apt.locationAddress || undefined,
-  }));
+  const formattedAppointments = appointments.map(transformBookingToAppointment);
 
   // Separate upcoming and past appointments
   const now = new Date();

@@ -12,8 +12,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { useClientPackages, useAvailablePackages } from "@/lib/hooks/use-api";
+import { useClientPackages, useAvailablePackages } from "@/hooks/use-api";
 import { usePurchasePackage } from "@/hooks/use-payments";
+import { LoadingSpinner, EmptyState } from "@/components/shared";
 
 export default function PackagesPage() {
   const {
@@ -38,11 +39,7 @@ export default function PackagesPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <LoadingSpinner />;
   }
 
   if (error) {
@@ -99,15 +96,11 @@ export default function PackagesPage() {
         <h2 className="text-lg font-semibold">Your Active Packages</h2>
 
         {activePackages.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Package className="mb-4 h-12 w-12 text-muted-foreground" />
-              <h3 className="text-lg font-medium">No active packages</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Purchase a package below to save on your sessions
-              </p>
-            </CardContent>
-          </Card>
+          <EmptyState
+            icon={Package}
+            title="No active packages"
+            description="Purchase a package below to save on your sessions"
+          />
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {activePackages.map((pkg) => {
@@ -286,15 +279,11 @@ export default function PackagesPage() {
         ))}
 
         {availablePackages.length === 0 && (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Package className="mb-4 h-12 w-12 text-muted-foreground" />
-              <h3 className="text-lg font-medium">No packages available</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Check back later for available packages
-              </p>
-            </CardContent>
-          </Card>
+          <EmptyState
+            icon={Package}
+            title="No packages available"
+            description="Check back later for available packages"
+          />
         )}
       </section>
     </div>

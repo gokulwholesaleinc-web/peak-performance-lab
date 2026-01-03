@@ -46,6 +46,7 @@ import {
   type Service,
   type ServiceFormData,
 } from "@/hooks/use-api";
+import { PageHeader, ConfirmationDialog } from "@/components/shared";
 
 const categories = ["Training", "Therapy", "Recovery", "Assessment"];
 
@@ -245,18 +246,15 @@ export default function ServicesPage() {
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Services</h1>
-          <p className="text-muted-foreground">
-            Manage the services you offer to clients
-          </p>
-        </div>
+      <PageHeader
+        title="Services"
+        description="Manage the services you offer to clients"
+      >
         <Button onClick={handleAddNew}>
           <Plus className="mr-2 h-4 w-4" />
           Add Service
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Services table */}
       <DataTable
@@ -390,32 +388,16 @@ export default function ServicesPage() {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Service</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &quot;{serviceToDelete?.name}
-              &quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteConfirmOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleConfirmDelete}
-              disabled={deleteMutation.isPending}
-            >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmationDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title="Delete Service"
+        description={`Are you sure you want to delete "${serviceToDelete?.name}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        onConfirm={handleConfirmDelete}
+        isLoading={deleteMutation.isPending}
+        variant="destructive"
+      />
     </div>
   );
 }

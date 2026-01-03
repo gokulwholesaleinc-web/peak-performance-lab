@@ -30,7 +30,7 @@ import {
   useCurrentUser,
   useClientProfile,
   useUpdateProfile,
-} from "@/lib/hooks/use-api";
+} from "@/hooks/use-api";
 
 const profileSchema = z.object({
   name: z.string().min(1, "Name is required"),

@@ -18,24 +18,9 @@ import {
   useDashboardStats,
   useTodaysBookings,
   useRecentActivity,
-  type Booking,
   type ActivityItem,
 } from "@/hooks/use-api";
-
-function getStatusColor(status: Booking["status"]) {
-  switch (status) {
-    case "confirmed":
-      return "default";
-    case "pending":
-      return "secondary";
-    case "completed":
-      return "outline";
-    case "cancelled":
-      return "destructive";
-    default:
-      return "secondary";
-  }
-}
+import { getStatusColor, formatAppointmentTime } from "@/lib/utils";
 
 function getActivityIcon(type: ActivityItem["type"]) {
   switch (type) {
@@ -61,12 +46,6 @@ function formatTimeAgo(timestamp: string) {
   if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
   if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
   return format(date, "MMM d");
-}
-
-function formatAppointmentTime(scheduledAt: string, durationMins: number) {
-  const start = new Date(scheduledAt);
-  const end = new Date(start.getTime() + durationMins * 60 * 1000);
-  return `${format(start, "HH:mm")} - ${format(end, "HH:mm")}`;
 }
 
 export default function AdminDashboard() {

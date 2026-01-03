@@ -53,23 +53,9 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { useClients, useBookings, type Client, type Booking } from "@/hooks/use-api";
+import { useClients, useBookings, type Client } from "@/hooks/use-api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-
-function getStatusColor(status: Booking["status"]) {
-  switch (status) {
-    case "confirmed":
-      return "default";
-    case "pending":
-      return "secondary";
-    case "completed":
-      return "outline";
-    case "cancelled":
-      return "destructive";
-    default:
-      return "secondary";
-  }
-}
+import { getStatusColor } from "@/lib/utils";
 
 interface ClientFormData {
   name: string;
