@@ -31,6 +31,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { useCurrentUser } from "@/lib/hooks/use-api";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: Home },
@@ -49,11 +50,21 @@ export default function ClientLayout({
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Mock user data - in production this would come from auth context
+  // Fetch current user from API
+  const { data: userData } = useCurrentUser();
+
+  // User data with fallbacks
   const user = {
-    name: "John Doe",
-    email: "john@example.com",
-    initials: "JD",
+    name: userData?.user?.name || "User",
+    email: userData?.user?.email || "",
+    initials: userData?.user?.name
+      ? userData.user.name
+          .split(" ")
+          .map((n) => n[0])
+          .join("")
+          .toUpperCase()
+          .slice(0, 2)
+      : "??",
   };
 
   async function handleLogout() {
@@ -73,9 +84,9 @@ export default function ClientLayout({
           {/* Logo */}
           <Link href="/dashboard" className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-              <Dumbbell className="h-5 w-5 text-primary-foreground" />
+              <Dumbbell className="h-4 w-4 text-primary-foreground" />
             </div>
-            <span className="hidden font-semibold sm:inline-block">
+            <span className="hidden font-semibold sm:inline-block text-foreground">
               Peak Performance Lab
             </span>
           </Link>
@@ -159,9 +170,9 @@ export default function ClientLayout({
                 <SheetHeader>
                   <SheetTitle className="flex items-center gap-2">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                      <Dumbbell className="h-5 w-5 text-primary-foreground" />
+                      <Dumbbell className="h-4 w-4 text-primary-foreground" />
                     </div>
-                    Peak Performance Lab
+                    <span className="text-foreground">Peak Performance Lab</span>
                   </SheetTitle>
                 </SheetHeader>
                 <nav className="mt-8 flex flex-col gap-1">

@@ -1,15 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Calendar, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -27,124 +23,45 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  AppointmentCard,
-  Appointment,
-} from "@/components/shared/AppointmentCard";
+import { AppointmentCard } from "@/components/shared/AppointmentCard";
 import Link from "next/link";
-
-// Mock data - replace with actual API calls
-const mockAppointments: Appointment[] = [
-  {
-    id: "1",
-    serviceName: "Personal Training Session",
-    date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
-    startTime: "10:00 AM",
-    endTime: "11:00 AM",
-    status: "scheduled",
-    locationType: "mobile",
-    location: "123 Main St, Chicago, IL",
-  },
-  {
-    id: "2",
-    serviceName: "Golf Fitness Assessment",
-    date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
-    startTime: "2:00 PM",
-    endTime: "3:30 PM",
-    status: "scheduled",
-    locationType: "virtual",
-  },
-  {
-    id: "3",
-    serviceName: "Dry Needling Session",
-    date: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
-    startTime: "9:00 AM",
-    endTime: "9:45 AM",
-    status: "scheduled",
-    locationType: "mobile",
-    location: "456 Oak Ave, Chicago, IL",
-  },
-  {
-    id: "4",
-    serviceName: "Personal Training Session",
-    date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-    startTime: "10:00 AM",
-    endTime: "11:00 AM",
-    status: "completed",
-    locationType: "mobile",
-    location: "123 Main St, Chicago, IL",
-  },
-  {
-    id: "5",
-    serviceName: "Stretch Therapy",
-    date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-    startTime: "3:00 PM",
-    endTime: "3:45 PM",
-    status: "completed",
-    locationType: "virtual",
-  },
-  {
-    id: "6",
-    serviceName: "Cupping Therapy",
-    date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
-    startTime: "11:00 AM",
-    endTime: "11:30 AM",
-    status: "cancelled",
-    locationType: "mobile",
-    location: "789 Pine St, Chicago, IL",
-  },
-];
-
-async function fetchAppointments(): Promise<Appointment[]> {
-  // In production, this would be an API call
-  return new Promise((resolve) => {
-    setTimeout(() => resolve(mockAppointments), 500);
-  });
-}
-
-async function cancelAppointment(id: string): Promise<void> {
-  // In production, this would be an API call
-  return new Promise((resolve) => {
-    setTimeout(resolve, 500);
-  });
-}
+import { toast } from "sonner";
+import { useBookings, useCancelBooking } from "@/lib/hooks/use-api";
 
 export default function AppointmentsPage() {
-  const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
-  const [selectedAppointmentId, setSelectedAppointmentId] = useState<
-    string | null
-  >(null);
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState<number | null>(null);
 
-  const { data: appointments, isLoading, error } = useQuery({
-    queryKey: ["appointments"],
-    queryFn: fetchAppointments,
-  });
+  // Fetch all appointments
+  const { data: appointmentsData, isLoading, error } = useBookings({ limit: 100 });
 
-  const cancelMutation = useMutation({
-    mutationFn: cancelAppointment,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["appointments"] });
-      setCancelDialogOpen(false);
-      setSelectedAppointmentId(null);
-    },
-  });
+  // Cancel mutation
+  const cancelMutation = useCancelBooking();
 
   const handleCancelClick = (id: string) => {
-    setSelectedAppointmentId(id);
+    setSelectedAppointmentId(parseInt(id, 10));
     setCancelDialogOpen(true);
   };
 
-  const handleConfirmCancel = () => {
+  const handleConfirmCancel = async () => {
     if (selectedAppointmentId) {
-      cancelMutation.mutate(selectedAppointmentId);
+      try {
+        await cancelMutation.mutateAsync(selectedAppointmentId);
+        toast.success("Appointment cancelled successfully");
+        setCancelDialogOpen(false);
+        setSelectedAppointmentId(null);
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Failed to cancel appointment"
+        );
+      }
     }
   };
 
   const handleReschedule = (id: string) => {
-    // In production, navigate to reschedule flow
-    console.log("Reschedule appointment:", id);
+    // TODO: Navigate to reschedule flow
+    toast.info("Reschedule feature coming soon!");
   };
 
   if (isLoading) {
@@ -163,11 +80,37 @@ export default function AppointmentsPage() {
     );
   }
 
-  const upcomingAppointments = (appointments || []).filter(
-    (apt) => apt.status === "scheduled"
+  const appointments = appointmentsData?.data || [];
+
+  // Transform appointments for AppointmentCard
+  const formattedAppointments = appointments.map((apt) => ({
+    id: apt.id.toString(),
+    serviceName: apt.service.name,
+    date: new Date(apt.scheduledAt),
+    startTime: new Date(apt.scheduledAt).toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }),
+    endTime: new Date(
+      new Date(apt.scheduledAt).getTime() + apt.durationMins * 60 * 1000
+    ).toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }),
+    status: apt.status === "pending" ? "scheduled" : apt.status,
+    locationType: apt.locationType,
+    location: apt.locationAddress || undefined,
+  }));
+
+  // Separate upcoming and past appointments
+  const now = new Date();
+  const upcomingAppointments = formattedAppointments.filter(
+    (apt) => apt.status === "scheduled" || apt.status === "pending" || apt.status === "confirmed"
   );
-  const pastAppointments = (appointments || []).filter(
-    (apt) => apt.status !== "scheduled"
+  const pastAppointments = formattedAppointments.filter(
+    (apt) => apt.status === "completed" || apt.status === "cancelled"
   );
 
   const filteredPastAppointments =
@@ -219,7 +162,7 @@ export default function AppointmentsPage() {
               {upcomingAppointments.map((appointment) => (
                 <AppointmentCard
                   key={appointment.id}
-                  appointment={appointment}
+                  appointment={appointment as any}
                   showActions
                   onCancel={handleCancelClick}
                   onReschedule={handleReschedule}
@@ -241,7 +184,6 @@ export default function AppointmentsPage() {
                 <SelectItem value="all">All</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
                 <SelectItem value="cancelled">Cancelled</SelectItem>
-                <SelectItem value="no_show">No Show</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -261,7 +203,7 @@ export default function AppointmentsPage() {
               {filteredPastAppointments.map((appointment) => (
                 <AppointmentCard
                   key={appointment.id}
-                  appointment={appointment}
+                  appointment={appointment as any}
                   showActions={false}
                 />
               ))}

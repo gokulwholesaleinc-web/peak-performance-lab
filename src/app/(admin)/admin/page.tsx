@@ -1,6 +1,5 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   DollarSign,
@@ -15,152 +14,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  useDashboardStats,
+  useTodaysBookings,
+  useRecentActivity,
+  type Booking,
+  type ActivityItem,
+} from "@/hooks/use-api";
 
-interface Appointment {
-  id: string;
-  clientName: string;
-  serviceName: string;
-  startTime: string;
-  endTime: string;
-  status: "scheduled" | "confirmed" | "completed" | "cancelled";
-}
-
-interface DashboardStats {
-  revenueThisMonth: number;
-  totalClients: number;
-  upcomingAppointments: number;
-  appointmentsToday: number;
-}
-
-interface ActivityItem {
-  id: string;
-  type: "booking" | "payment" | "client" | "cancellation";
-  message: string;
-  timestamp: string;
-}
-
-// Fetch dashboard stats
-async function fetchDashboardStats(): Promise<DashboardStats> {
-  const response = await fetch("/api/admin/stats");
-  if (!response.ok) {
-    // Return mock data if API not available
-    return {
-      revenueThisMonth: 12450,
-      totalClients: 48,
-      upcomingAppointments: 23,
-      appointmentsToday: 6,
-    };
-  }
-  return response.json();
-}
-
-// Fetch today's appointments
-async function fetchTodaysAppointments(): Promise<Appointment[]> {
-  const response = await fetch(
-    `/api/bookings?date=${format(new Date(), "yyyy-MM-dd")}`
-  );
-  if (!response.ok) {
-    // Return mock data if API not available
-    return [
-      {
-        id: "1",
-        clientName: "John Smith",
-        serviceName: "Personal Training",
-        startTime: "09:00",
-        endTime: "10:00",
-        status: "confirmed",
-      },
-      {
-        id: "2",
-        clientName: "Sarah Johnson",
-        serviceName: "Golf Fitness",
-        startTime: "10:30",
-        endTime: "11:30",
-        status: "scheduled",
-      },
-      {
-        id: "3",
-        clientName: "Mike Davis",
-        serviceName: "Dry Needling",
-        startTime: "13:00",
-        endTime: "13:45",
-        status: "confirmed",
-      },
-      {
-        id: "4",
-        clientName: "Emily Brown",
-        serviceName: "Stretching Session",
-        startTime: "14:00",
-        endTime: "14:30",
-        status: "scheduled",
-      },
-      {
-        id: "5",
-        clientName: "Robert Wilson",
-        serviceName: "Personal Training",
-        startTime: "15:00",
-        endTime: "16:00",
-        status: "confirmed",
-      },
-      {
-        id: "6",
-        clientName: "Lisa Chen",
-        serviceName: "Cupping Therapy",
-        startTime: "16:30",
-        endTime: "17:00",
-        status: "scheduled",
-      },
-    ];
-  }
-  return response.json();
-}
-
-// Fetch recent activity
-async function fetchRecentActivity(): Promise<ActivityItem[]> {
-  const response = await fetch("/api/admin/activity");
-  if (!response.ok) {
-    // Return mock data if API not available
-    return [
-      {
-        id: "1",
-        type: "booking",
-        message: "New booking from John Smith for Personal Training",
-        timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-      },
-      {
-        id: "2",
-        type: "payment",
-        message: "Payment received: $150 from Sarah Johnson",
-        timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-      },
-      {
-        id: "3",
-        type: "client",
-        message: "New client registered: Mike Davis",
-        timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-      },
-      {
-        id: "4",
-        type: "cancellation",
-        message: "Appointment cancelled by Emily Brown",
-        timestamp: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
-      },
-      {
-        id: "5",
-        type: "booking",
-        message: "Rescheduled: Robert Wilson moved to 3PM",
-        timestamp: new Date(Date.now() - 1000 * 60 * 240).toISOString(),
-      },
-    ];
-  }
-  return response.json();
-}
-
-function getStatusColor(status: Appointment["status"]) {
+function getStatusColor(status: Booking["status"]) {
   switch (status) {
     case "confirmed":
       return "default";
-    case "scheduled":
+    case "pending":
       return "secondary";
     case "completed":
       return "outline";
@@ -197,21 +63,18 @@ function formatTimeAgo(timestamp: string) {
   return format(date, "MMM d");
 }
 
+function formatAppointmentTime(scheduledAt: string, durationMins: number) {
+  const start = new Date(scheduledAt);
+  const end = new Date(start.getTime() + durationMins * 60 * 1000);
+  return `${format(start, "HH:mm")} - ${format(end, "HH:mm")}`;
+}
+
 export default function AdminDashboard() {
-  const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ["dashboard-stats"],
-    queryFn: fetchDashboardStats,
-  });
+  const { data: stats, isLoading: statsLoading } = useDashboardStats();
+  const { data: bookingsResponse, isLoading: appointmentsLoading } = useTodaysBookings();
+  const { data: activity, isLoading: activityLoading } = useRecentActivity();
 
-  const { data: appointments, isLoading: appointmentsLoading } = useQuery({
-    queryKey: ["todays-appointments"],
-    queryFn: fetchTodaysAppointments,
-  });
-
-  const { data: activity, isLoading: activityLoading } = useQuery({
-    queryKey: ["recent-activity"],
-    queryFn: fetchRecentActivity,
-  });
+  const appointments = bookingsResponse?.data || [];
 
   return (
     <div className="space-y-6">
@@ -230,7 +93,7 @@ export default function AdminDashboard() {
           value={
             statsLoading
               ? "..."
-              : `$${stats?.revenueThisMonth.toLocaleString() ?? 0}`
+              : `$${stats?.revenueThisMonth?.toLocaleString() ?? 0}`
           }
           description="from last month"
           icon={DollarSign}
@@ -251,7 +114,7 @@ export default function AdminDashboard() {
         />
         <StatCard
           title="Today's Appointments"
-          value={statsLoading ? "..." : stats?.appointmentsToday ?? 0}
+          value={statsLoading ? "..." : stats?.todayAppointments ?? 0}
           description={format(new Date(), "EEEE, MMMM d")}
           icon={Clock}
         />
@@ -284,14 +147,14 @@ export default function AdminDashboard() {
                       className="flex items-center justify-between rounded-lg border p-3"
                     >
                       <div className="space-y-1">
-                        <p className="font-medium">{appointment.clientName}</p>
+                        <p className="font-medium">{appointment.client.name}</p>
                         <p className="text-sm text-muted-foreground">
-                          {appointment.serviceName}
+                          {appointment.service.name}
                         </p>
                       </div>
                       <div className="text-right space-y-1">
                         <p className="text-sm font-medium">
-                          {appointment.startTime} - {appointment.endTime}
+                          {formatAppointmentTime(appointment.scheduledAt, appointment.durationMins)}
                         </p>
                         <Badge variant={getStatusColor(appointment.status)}>
                           {appointment.status}

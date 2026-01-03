@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Plus,
   MoreHorizontal,
@@ -38,206 +37,46 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-interface Service {
-  id: string;
-  name: string;
-  description: string;
-  duration: number; // in minutes
-  price: number;
-  category: string;
-  isActive: boolean;
-}
-
-// Fetch services
-async function fetchServices(): Promise<Service[]> {
-  const response = await fetch("/api/services");
-  if (!response.ok) {
-    // Return mock data if API not available
-    return [
-      {
-        id: "1",
-        name: "Personal Training",
-        description:
-          "One-on-one personal training session tailored to your fitness goals",
-        duration: 60,
-        price: 100,
-        category: "Training",
-        isActive: true,
-      },
-      {
-        id: "2",
-        name: "Golf Fitness",
-        description:
-          "Specialized training program to improve your golf performance",
-        duration: 60,
-        price: 120,
-        category: "Training",
-        isActive: true,
-      },
-      {
-        id: "3",
-        name: "Dry Needling",
-        description:
-          "Therapeutic technique for muscle pain and movement dysfunction",
-        duration: 45,
-        price: 80,
-        category: "Therapy",
-        isActive: true,
-      },
-      {
-        id: "4",
-        name: "IASTM",
-        description:
-          "Instrument-assisted soft tissue mobilization for muscle recovery",
-        duration: 30,
-        price: 60,
-        category: "Therapy",
-        isActive: true,
-      },
-      {
-        id: "5",
-        name: "Cupping Therapy",
-        description: "Traditional therapy for muscle tension and blood flow",
-        duration: 30,
-        price: 50,
-        category: "Therapy",
-        isActive: true,
-      },
-      {
-        id: "6",
-        name: "Stretching Session",
-        description: "Guided stretching session for flexibility and mobility",
-        duration: 30,
-        price: 45,
-        category: "Recovery",
-        isActive: false,
-      },
-      {
-        id: "7",
-        name: "Kinesio Taping",
-        description: "Athletic taping for injury prevention and support",
-        duration: 15,
-        price: 25,
-        category: "Therapy",
-        isActive: true,
-      },
-    ];
-  }
-  return response.json();
-}
-
-// Create/Update service
-async function saveService(service: Partial<Service>): Promise<Service> {
-  const isNew = !service.id;
-  const url = isNew ? "/api/services" : `/api/services/${service.id}`;
-  const method = isNew ? "POST" : "PATCH";
-
-  const response = await fetch(url, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(service),
-  });
-
-  if (!response.ok) {
-    throw new Error("Failed to save service");
-  }
-
-  return response.json();
-}
-
-// Delete service
-async function deleteService(id: string): Promise<void> {
-  const response = await fetch(`/api/services/${id}`, {
-    method: "DELETE",
-  });
-
-  if (!response.ok) {
-    throw new Error("Failed to delete service");
-  }
-}
-
-// Toggle service active status
-async function toggleServiceStatus(
-  id: string,
-  isActive: boolean
-): Promise<Service> {
-  const response = await fetch(`/api/services/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ isActive }),
-  });
-
-  if (!response.ok) {
-    throw new Error("Failed to update service status");
-  }
-
-  return response.json();
-}
+import { toast } from "sonner";
+import {
+  useServices,
+  useCreateService,
+  useUpdateService,
+  useDeleteService,
+  type Service,
+  type ServiceFormData,
+} from "@/hooks/use-api";
 
 const categories = ["Training", "Therapy", "Recovery", "Assessment"];
 
 export default function ServicesPage() {
-  const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingService, setEditingService] = useState<Partial<Service> | null>(
-    null
-  );
+  const [editingService, setEditingService] = useState<Service | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [serviceToDelete, setServiceToDelete] = useState<Service | null>(null);
 
   // Form state
-  const [formData, setFormData] = useState<Partial<Service>>({
+  const [formData, setFormData] = useState<ServiceFormData>({
     name: "",
     description: "",
-    duration: 60,
-    price: 0,
+    durationMins: 60,
+    price: "0",
     category: "Training",
     isActive: true,
   });
 
-  // Fetch services
-  const { data: services, isLoading } = useQuery({
-    queryKey: ["services"],
-    queryFn: fetchServices,
-  });
-
-  // Save mutation
-  const saveMutation = useMutation({
-    mutationFn: saveService,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["services"] });
-      setIsDialogOpen(false);
-      setEditingService(null);
-      resetForm();
-    },
-  });
-
-  // Delete mutation
-  const deleteMutation = useMutation({
-    mutationFn: deleteService,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["services"] });
-      setDeleteConfirmOpen(false);
-      setServiceToDelete(null);
-    },
-  });
-
-  // Toggle status mutation
-  const toggleMutation = useMutation({
-    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
-      toggleServiceStatus(id, isActive),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["services"] });
-    },
-  });
+  // API hooks
+  const { data: services, isLoading } = useServices();
+  const createMutation = useCreateService();
+  const updateMutation = useUpdateService();
+  const deleteMutation = useDeleteService();
 
   const resetForm = () => {
     setFormData({
       name: "",
       description: "",
-      duration: 60,
-      price: 0,
+      durationMins: 60,
+      price: "0",
       category: "Training",
       isActive: true,
     });
@@ -245,7 +84,14 @@ export default function ServicesPage() {
 
   const handleEdit = (service: Service) => {
     setEditingService(service);
-    setFormData(service);
+    setFormData({
+      name: service.name,
+      description: service.description || "",
+      durationMins: service.durationMins,
+      price: service.price,
+      category: service.category || "Training",
+      isActive: service.isActive,
+    });
     setIsDialogOpen(true);
   };
 
@@ -254,12 +100,51 @@ export default function ServicesPage() {
     setDeleteConfirmOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    saveMutation.mutate({
-      ...formData,
-      id: editingService?.id,
-    });
+
+    try {
+      if (editingService) {
+        await updateMutation.mutateAsync({
+          id: editingService.id,
+          data: formData,
+        });
+        toast.success("Service updated successfully");
+      } else {
+        await createMutation.mutateAsync(formData);
+        toast.success("Service created successfully");
+      }
+      setIsDialogOpen(false);
+      setEditingService(null);
+      resetForm();
+    } catch (error) {
+      toast.error(editingService ? "Failed to update service" : "Failed to create service");
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!serviceToDelete) return;
+
+    try {
+      await deleteMutation.mutateAsync(serviceToDelete.id);
+      toast.success("Service deleted successfully");
+      setDeleteConfirmOpen(false);
+      setServiceToDelete(null);
+    } catch (error) {
+      toast.error("Failed to delete service");
+    }
+  };
+
+  const handleToggleStatus = async (service: Service) => {
+    try {
+      await updateMutation.mutateAsync({
+        id: service.id,
+        data: { isActive: !service.isActive },
+      });
+      toast.success(`Service ${service.isActive ? "deactivated" : "activated"} successfully`);
+    } catch (error) {
+      toast.error("Failed to update service status");
+    }
   };
 
   const handleAddNew = () => {
@@ -288,17 +173,17 @@ export default function ServicesPage() {
       header: "Category",
       sortable: true,
       render: (service) => (
-        <Badge variant="outline">{service.category}</Badge>
+        <Badge variant="outline">{service.category || "Uncategorized"}</Badge>
       ),
     },
     {
-      key: "duration",
+      key: "durationMins",
       header: "Duration",
       sortable: true,
       render: (service) => (
         <div className="flex items-center gap-1">
           <Clock className="h-4 w-4 text-muted-foreground" />
-          {service.duration} min
+          {service.durationMins} min
         </div>
       ),
     },
@@ -309,7 +194,7 @@ export default function ServicesPage() {
       render: (service) => (
         <div className="flex items-center gap-1">
           <DollarSign className="h-4 w-4 text-muted-foreground" />
-          {service.price}
+          {parseFloat(service.price).toFixed(2)}
         </div>
       ),
     },
@@ -338,14 +223,7 @@ export default function ServicesPage() {
               <Pencil className="mr-2 h-4 w-4" />
               Edit
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() =>
-                toggleMutation.mutate({
-                  id: service.id,
-                  isActive: !service.isActive,
-                })
-              }
-            >
+            <DropdownMenuItem onClick={() => handleToggleStatus(service)}>
               {service.isActive ? "Deactivate" : "Activate"}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
@@ -361,6 +239,8 @@ export default function ServicesPage() {
       ),
     },
   ];
+
+  const isSubmitting = createMutation.isPending || updateMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -432,15 +312,15 @@ export default function ServicesPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="duration">Duration (minutes)</Label>
+                <Label htmlFor="durationMins">Duration (minutes)</Label>
                 <Input
-                  id="duration"
+                  id="durationMins"
                   type="number"
-                  value={formData.duration}
+                  value={formData.durationMins}
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      duration: parseInt(e.target.value) || 0,
+                      durationMins: parseInt(e.target.value) || 0,
                     })
                   }
                   min={15}
@@ -458,11 +338,11 @@ export default function ServicesPage() {
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      price: parseFloat(e.target.value) || 0,
+                      price: e.target.value,
                     })
                   }
                   min={0}
-                  step={5}
+                  step={0.01}
                   required
                 />
               </div>
@@ -497,8 +377,8 @@ export default function ServicesPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={saveMutation.isPending}>
-                {saveMutation.isPending
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting
                   ? "Saving..."
                   : editingService
                     ? "Update Service"
@@ -528,9 +408,7 @@ export default function ServicesPage() {
             </Button>
             <Button
               variant="destructive"
-              onClick={() =>
-                serviceToDelete && deleteMutation.mutate(serviceToDelete.id)
-              }
+              onClick={handleConfirmDelete}
               disabled={deleteMutation.isPending}
             >
               {deleteMutation.isPending ? "Deleting..." : "Delete"}

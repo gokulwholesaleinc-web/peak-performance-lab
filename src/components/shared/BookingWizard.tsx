@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import {
   ArrowLeft,
@@ -17,39 +17,17 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-
-export interface Service {
-  id: string;
-  name: string;
-  description: string;
-  duration: number;
-  price: number;
-  category: string;
-}
-
-export interface TimeSlot {
-  time: string;
-  available: boolean;
-}
+import { useAvailability, useCreateBooking, type Service } from "@/lib/hooks/use-api";
 
 export interface ActivePackage {
   id: string;
   name: string;
   sessionsRemaining: number;
-  serviceId: string;
-}
-
-interface BookingWizardProps {
-  services: Service[];
-  activePackages: ActivePackage[];
-  onComplete: (booking: BookingData) => void;
-  onCancel: () => void;
+  serviceId?: string;
+  packageId?: number;
 }
 
 export interface BookingData {
@@ -63,6 +41,16 @@ export interface BookingData {
   notes?: string;
 }
 
+interface BookingWizardProps {
+  services: Service[];
+  activePackages: ActivePackage[];
+  onComplete: (booking: BookingData) => void;
+  onCancel: () => void;
+}
+
+// Re-export Service type for backward compatibility
+export type { Service };
+
 type Step = 1 | 2 | 3 | 4;
 
 const steps = [
@@ -70,19 +58,6 @@ const steps = [
   { number: 2, title: "Choose Date" },
   { number: 3, title: "Select Time" },
   { number: 4, title: "Confirm & Pay" },
-];
-
-// Mock time slots - replace with actual API call
-const mockTimeSlots: TimeSlot[] = [
-  { time: "9:00 AM", available: true },
-  { time: "10:00 AM", available: true },
-  { time: "11:00 AM", available: false },
-  { time: "12:00 PM", available: true },
-  { time: "1:00 PM", available: false },
-  { time: "2:00 PM", available: true },
-  { time: "3:00 PM", available: true },
-  { time: "4:00 PM", available: true },
-  { time: "5:00 PM", available: false },
 ];
 
 export function BookingWizard({
@@ -103,13 +78,47 @@ export function BookingWizard({
   const [selectedPackage, setSelectedPackage] = useState<string>("");
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [timeSlots] = useState<TimeSlot[]>(mockTimeSlots);
+
+  // Format date for API
+  const formattedDate = selectedDate
+    ? format(selectedDate, "yyyy-MM-dd")
+    : null;
+
+  // Fetch availability from API
+  const {
+    data: availabilityData,
+    isLoading: availabilityLoading,
+    error: availabilityError,
+  } = useAvailability(formattedDate, selectedService?.id || null);
+
+  // Reset time when date or service changes
+  useEffect(() => {
+    setSelectedTime("");
+  }, [selectedDate, selectedService]);
+
+  // Get time slots from API response
+  const timeSlots =
+    availabilityData?.data?.slots?.map((slot) => {
+      const startDate = new Date(slot.startTime);
+      return {
+        time: startDate.toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        }),
+        isoTime: slot.startTime,
+        available: true,
+      };
+    }) || [];
 
   // Get applicable packages for selected service
   const applicablePackages = selectedService
     ? activePackages.filter(
         (pkg) =>
-          pkg.serviceId === selectedService.id && pkg.sessionsRemaining > 0
+          pkg.sessionsRemaining > 0 &&
+          // Match package to service (simplified matching)
+          (pkg.serviceId === selectedService.id.toString() ||
+            pkg.name.toLowerCase().includes(selectedService.category?.toLowerCase() || ""))
       )
     : [];
 
@@ -145,8 +154,11 @@ export function BookingWizard({
 
     setIsSubmitting(true);
 
+    // Find the selected time slot to get ISO time
+    const selectedSlot = timeSlots.find((slot) => slot.time === selectedTime);
+
     const bookingData: BookingData = {
-      serviceId: selectedService.id,
+      serviceId: selectedService.id.toString(),
       date: selectedDate,
       time: selectedTime,
       locationType,
@@ -164,13 +176,17 @@ export function BookingWizard({
   };
 
   // Group services by category
-  const servicesByCategory = services.reduce((acc, service) => {
-    if (!acc[service.category]) {
-      acc[service.category] = [];
-    }
-    acc[service.category].push(service);
-    return acc;
-  }, {} as Record<string, Service[]>);
+  const servicesByCategory = services.reduce(
+    (acc, service) => {
+      const category = service.category || "Other";
+      if (!acc[category]) {
+        acc[category] = [];
+      }
+      acc[category].push(service);
+      return acc;
+    },
+    {} as Record<string, Service[]>
+  );
 
   return (
     <div className="space-y-6">
@@ -184,8 +200,8 @@ export function BookingWizard({
                 currentStep === step.number
                   ? "border-primary bg-primary text-primary-foreground"
                   : currentStep > step.number
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-muted text-muted-foreground"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-muted text-muted-foreground"
               )}
             >
               {currentStep > step.number ? (
@@ -249,7 +265,7 @@ export function BookingWizard({
                           <div className="flex w-full items-start justify-between">
                             <p className="font-medium">{service.name}</p>
                             <p className="font-semibold">
-                              ${service.price.toFixed(2)}
+                              ${parseFloat(service.price).toFixed(2)}
                             </p>
                           </div>
                           <p className="mt-1 text-sm text-muted-foreground">
@@ -257,7 +273,7 @@ export function BookingWizard({
                           </p>
                           <div className="mt-2 flex items-center gap-1 text-sm text-muted-foreground">
                             <Clock className="h-3 w-3" />
-                            {service.duration} min
+                            {service.durationMins} min
                           </div>
                         </button>
                       ))}
@@ -297,7 +313,9 @@ export function BookingWizard({
           {currentStep === 3 && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-lg font-semibold">Select Time & Location</h2>
+                <h2 className="text-lg font-semibold">
+                  Select Time & Location
+                </h2>
                 <p className="text-sm text-muted-foreground">
                   Choose an available time slot and session type
                 </p>
@@ -306,25 +324,45 @@ export function BookingWizard({
               {/* Time Slots */}
               <div className="space-y-3">
                 <h3 className="text-sm font-medium">Available Times</h3>
-                <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-                  {timeSlots.map((slot) => (
-                    <button
-                      key={slot.time}
-                      onClick={() => slot.available && setSelectedTime(slot.time)}
-                      disabled={!slot.available}
-                      className={cn(
-                        "rounded-md border px-3 py-2 text-sm font-medium transition-colors",
-                        slot.available
-                          ? selectedTime === slot.time
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-input hover:bg-accent"
-                          : "cursor-not-allowed border-muted bg-muted/50 text-muted-foreground line-through"
-                      )}
-                    >
-                      {slot.time}
-                    </button>
-                  ))}
-                </div>
+                {availabilityLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    <span className="ml-2 text-sm text-muted-foreground">
+                      Loading available times...
+                    </span>
+                  </div>
+                ) : availabilityError ? (
+                  <div className="py-4 text-center text-sm text-destructive">
+                    Failed to load available times. Please try again.
+                  </div>
+                ) : timeSlots.length === 0 ? (
+                  <div className="py-4 text-center text-sm text-muted-foreground">
+                    No available times for this date. Please select a different
+                    date.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+                    {timeSlots.map((slot) => (
+                      <button
+                        key={slot.time}
+                        onClick={() =>
+                          slot.available && setSelectedTime(slot.time)
+                        }
+                        disabled={!slot.available}
+                        className={cn(
+                          "rounded-md border px-3 py-2 text-sm font-medium transition-colors",
+                          slot.available
+                            ? selectedTime === slot.time
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-input hover:bg-accent"
+                            : "cursor-not-allowed border-muted bg-muted/50 text-muted-foreground line-through"
+                        )}
+                      >
+                        {slot.time}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Location Type */}
@@ -391,7 +429,8 @@ export function BookingWizard({
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Date</span>
                     <span className="font-medium">
-                      {selectedDate && format(selectedDate, "EEEE, MMMM d, yyyy")}
+                      {selectedDate &&
+                        format(selectedDate, "EEEE, MMMM d, yyyy")}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
@@ -410,10 +449,7 @@ export function BookingWizard({
               {/* Location Input (for mobile sessions) */}
               {locationType === "mobile" && (
                 <div className="space-y-2">
-                  <label
-                    htmlFor="location"
-                    className="text-sm font-medium"
-                  >
+                  <label htmlFor="location" className="text-sm font-medium">
                     Your Address
                   </label>
                   <input
@@ -448,7 +484,10 @@ export function BookingWizard({
                 <div className="grid gap-3 sm:grid-cols-2">
                   {applicablePackages.length > 0 && (
                     <button
-                      onClick={() => setUsePackage(true)}
+                      onClick={() => {
+                        setUsePackage(true);
+                        setSelectedPackage(applicablePackages[0]?.id || "");
+                      }}
                       className={cn(
                         "flex items-center gap-3 rounded-lg border p-4 text-left transition-colors",
                         usePackage
@@ -479,7 +518,7 @@ export function BookingWizard({
                     <div>
                       <p className="font-medium">Pay Now</p>
                       <p className="text-sm text-muted-foreground">
-                        ${selectedService?.price.toFixed(2)}
+                        ${selectedService ? parseFloat(selectedService.price).toFixed(2) : "0.00"}
                       </p>
                     </div>
                   </button>
@@ -490,7 +529,9 @@ export function BookingWizard({
               <div className="flex items-center justify-between rounded-lg bg-muted/50 p-4">
                 <span className="font-medium">Total</span>
                 <span className="text-xl font-bold">
-                  {usePackage ? "1 Session" : `$${selectedService?.price.toFixed(2)}`}
+                  {usePackage
+                    ? "1 Session"
+                    : `$${selectedService ? parseFloat(selectedService.price).toFixed(2) : "0.00"}`}
                 </span>
               </div>
             </div>

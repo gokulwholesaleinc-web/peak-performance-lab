@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Menu, LogOut, User, Bell } from "lucide-react";
+import { Menu, LogOut, User, Bell, Dumbbell } from "lucide-react";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { AdminNav } from "@/components/shared/AdminNav";
 import { Button } from "@/components/ui/button";
@@ -57,7 +57,10 @@ export default function AdminLayout({
                       className="flex items-center gap-2 font-semibold"
                       onClick={() => setMobileMenuOpen(false)}
                     >
-                      <span className="text-xl">Peak Performance</span>
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+                        <Dumbbell className="h-4 w-4 text-primary-foreground" />
+                      </div>
+                      <span className="text-lg">Peak Performance</span>
                     </Link>
                   </SheetTitle>
                 </SheetHeader>
@@ -72,10 +75,13 @@ export default function AdminLayout({
               href="/admin"
               className="flex items-center gap-2 font-semibold"
             >
-              <span className="hidden md:inline-block text-lg">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+                <Dumbbell className="h-4 w-4 text-primary-foreground" />
+              </div>
+              <span className="hidden md:inline-block text-lg text-foreground">
                 Peak Performance Lab
               </span>
-              <span className="md:hidden text-lg">PPL</span>
+              <span className="md:hidden text-lg text-foreground">PPL</span>
             </Link>
 
             {/* Spacer */}

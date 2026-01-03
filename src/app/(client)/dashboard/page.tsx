@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
 import {
   CalendarDays,
   Package,
@@ -17,102 +16,22 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { AppointmentCard, Appointment } from "@/components/shared/AppointmentCard";
+import { AppointmentCard } from "@/components/shared/AppointmentCard";
 import { Badge } from "@/components/ui/badge";
-
-interface PackageBalance {
-  id: string;
-  name: string;
-  sessionsRemaining: number;
-  totalSessions: number;
-  expiresAt: string | null;
-}
-
-interface Invoice {
-  id: string;
-  number: string;
-  amount: number;
-  status: "paid" | "pending" | "overdue";
-  dueDate: string;
-}
-
-interface DashboardData {
-  upcomingAppointments: Appointment[];
-  packageBalances: PackageBalance[];
-  recentInvoices: Invoice[];
-}
-
-// Mock data for demonstration - replace with actual API calls
-const mockDashboardData: DashboardData = {
-  upcomingAppointments: [
-    {
-      id: "1",
-      serviceName: "Personal Training Session",
-      date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
-      startTime: "10:00 AM",
-      endTime: "11:00 AM",
-      status: "scheduled",
-      locationType: "mobile",
-      location: "123 Main St, Chicago, IL",
-    },
-    {
-      id: "2",
-      serviceName: "Golf Fitness Assessment",
-      date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
-      startTime: "2:00 PM",
-      endTime: "3:00 PM",
-      status: "scheduled",
-      locationType: "virtual",
-    },
-  ],
-  packageBalances: [
-    {
-      id: "1",
-      name: "Personal Training (10 Sessions)",
-      sessionsRemaining: 7,
-      totalSessions: 10,
-      expiresAt: "2025-03-15",
-    },
-    {
-      id: "2",
-      name: "Recovery Sessions (5 Pack)",
-      sessionsRemaining: 3,
-      totalSessions: 5,
-      expiresAt: null,
-    },
-  ],
-  recentInvoices: [
-    {
-      id: "1",
-      number: "INV-2024-001",
-      amount: 150.0,
-      status: "paid",
-      dueDate: "2024-12-15",
-    },
-    {
-      id: "2",
-      number: "INV-2024-002",
-      amount: 500.0,
-      status: "pending",
-      dueDate: "2025-01-15",
-    },
-  ],
-};
-
-async function fetchDashboardData(): Promise<DashboardData> {
-  // In production, this would be an API call
-  // const response = await fetch('/api/dashboard');
-  // return response.json();
-  return new Promise((resolve) => {
-    setTimeout(() => resolve(mockDashboardData), 500);
-  });
-}
+import {
+  useCurrentUser,
+  useUpcomingBookings,
+  useClientPackages,
+  useInvoices,
+} from "@/lib/hooks/use-api";
 
 export default function DashboardPage() {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["dashboard"],
-    queryFn: fetchDashboardData,
-  });
+  const { data: userData, isLoading: userLoading } = useCurrentUser();
+  const { data: bookingsData, isLoading: bookingsLoading } = useUpcomingBookings();
+  const { data: packagesData, isLoading: packagesLoading } = useClientPackages();
+  const { data: invoicesData, isLoading: invoicesLoading } = useInvoices({ limit: 5 });
+
+  const isLoading = userLoading || bookingsLoading || packagesLoading || invoicesLoading;
 
   if (isLoading) {
     return (
@@ -122,15 +41,44 @@ export default function DashboardPage() {
     );
   }
 
-  if (error) {
-    return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <p className="text-destructive">Failed to load dashboard data</p>
-      </div>
-    );
-  }
+  const userName = userData?.user?.name?.split(" ")[0] || "there";
+  const upcomingAppointments = bookingsData?.data || [];
+  const packageBalances = packagesData?.data?.active || [];
+  const recentInvoices = invoicesData?.data || [];
 
-  const { upcomingAppointments, packageBalances, recentInvoices } = data!;
+  // Transform appointments to match AppointmentCard format
+  const formattedAppointments = upcomingAppointments.map((apt) => ({
+    id: apt.id.toString(),
+    serviceName: apt.service.name,
+    date: new Date(apt.scheduledAt),
+    startTime: new Date(apt.scheduledAt).toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }),
+    endTime: new Date(
+      new Date(apt.scheduledAt).getTime() + apt.durationMins * 60 * 1000
+    ).toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }),
+    status: apt.status === "pending" ? "scheduled" : apt.status,
+    locationType: apt.locationType,
+    location: apt.locationAddress || undefined,
+  }));
+
+  // Calculate pending invoices total
+  const pendingInvoices = recentInvoices.filter(
+    (inv) => inv.status === "sent" || inv.status === "overdue"
+  );
+  const pendingTotal = pendingInvoices.reduce((acc, inv) => acc + inv.amount, 0);
+
+  // Calculate total remaining sessions
+  const totalRemainingSessions = packageBalances.reduce(
+    (acc, pkg) => acc + pkg.sessionsRemaining,
+    0
+  );
 
   return (
     <div className="space-y-6">
@@ -138,7 +86,7 @@ export default function DashboardPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
-            Welcome back, John!
+            Welcome back, {userName}!
           </h1>
           <p className="text-muted-foreground">
             Here&apos;s an overview of your fitness journey.
@@ -163,12 +111,12 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {upcomingAppointments.length}
+              {formattedAppointments.length}
             </div>
             <p className="text-xs text-muted-foreground">
-              {upcomingAppointments.length === 0
+              {formattedAppointments.length === 0
                 ? "No upcoming sessions"
-                : `Next: ${upcomingAppointments[0]?.serviceName}`}
+                : `Next: ${formattedAppointments[0]?.serviceName}`}
             </p>
           </CardContent>
         </Card>
@@ -181,14 +129,10 @@ export default function DashboardPage() {
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {packageBalances.reduce(
-                (acc, pkg) => acc + pkg.sessionsRemaining,
-                0
-              )}
-            </div>
+            <div className="text-2xl font-bold">{totalRemainingSessions}</div>
             <p className="text-xs text-muted-foreground">
-              Across {packageBalances.length} active packages
+              Across {packageBalances.length} active package
+              {packageBalances.length !== 1 ? "s" : ""}
             </p>
           </CardContent>
         </Card>
@@ -201,16 +145,9 @@ export default function DashboardPage() {
             <Receipt className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              $
-              {recentInvoices
-                .filter((inv) => inv.status === "pending")
-                .reduce((acc, inv) => acc + inv.amount, 0)
-                .toFixed(2)}
-            </div>
+            <div className="text-2xl font-bold">${pendingTotal.toFixed(2)}</div>
             <p className="text-xs text-muted-foreground">
-              {recentInvoices.filter((inv) => inv.status === "pending").length}{" "}
-              invoice(s) awaiting payment
+              {pendingInvoices.length} invoice(s) awaiting payment
             </p>
           </CardContent>
         </Card>
@@ -237,7 +174,7 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {upcomingAppointments.length === 0 ? (
+            {formattedAppointments.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center">
                 <CalendarDays className="mb-4 h-12 w-12 text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">
@@ -248,16 +185,14 @@ export default function DashboardPage() {
                 </Button>
               </div>
             ) : (
-              upcomingAppointments
-                .slice(0, 3)
-                .map((appointment) => (
-                  <AppointmentCard
-                    key={appointment.id}
-                    appointment={appointment}
-                    variant="compact"
-                    showActions={false}
-                  />
-                ))
+              formattedAppointments.slice(0, 3).map((appointment) => (
+                <AppointmentCard
+                  key={appointment.id}
+                  appointment={appointment as any}
+                  variant="compact"
+                  showActions={false}
+                />
+              ))
             )}
           </CardContent>
         </Card>
@@ -307,7 +242,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="text-right">
                     <p className="text-lg font-bold">
-                      {pkg.sessionsRemaining}/{pkg.totalSessions}
+                      {pkg.sessionsRemaining}/{pkg.sessionsTotal}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       sessions left
@@ -325,9 +260,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Recent Invoices</CardTitle>
-                <CardDescription>
-                  Your latest billing activity
-                </CardDescription>
+                <CardDescription>Your latest billing activity</CardDescription>
               </div>
               <Button variant="ghost" size="sm" asChild>
                 <Link href="/dashboard/invoices">
@@ -341,9 +274,7 @@ export default function DashboardPage() {
             {recentInvoices.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center">
                 <Receipt className="mb-4 h-12 w-12 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">
-                  No invoices yet
-                </p>
+                <p className="text-sm text-muted-foreground">No invoices yet</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -355,7 +286,10 @@ export default function DashboardPage() {
                     <div className="space-y-1">
                       <p className="font-medium">{invoice.number}</p>
                       <p className="text-sm text-muted-foreground">
-                        Due: {new Date(invoice.dueDate).toLocaleDateString()}
+                        Due:{" "}
+                        {invoice.dueDate
+                          ? new Date(invoice.dueDate).toLocaleDateString()
+                          : "N/A"}
                       </p>
                     </div>
                     <div className="flex items-center gap-4">
@@ -367,21 +301,22 @@ export default function DashboardPage() {
                           invoice.status === "paid"
                             ? "secondary"
                             : invoice.status === "overdue"
-                            ? "destructive"
-                            : "outline"
+                              ? "destructive"
+                              : "outline"
                         }
                         className={
                           invoice.status === "paid"
                             ? "bg-green-500/10 text-green-600"
                             : invoice.status === "overdue"
-                            ? ""
-                            : "bg-yellow-500/10 text-yellow-600"
+                              ? ""
+                              : "bg-yellow-500/10 text-yellow-600"
                         }
                       >
                         {invoice.status.charAt(0).toUpperCase() +
                           invoice.status.slice(1)}
                       </Badge>
-                      {invoice.status === "pending" && (
+                      {(invoice.status === "sent" ||
+                        invoice.status === "overdue") && (
                         <Button size="sm">Pay Now</Button>
                       )}
                     </div>

@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Dumbbell } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Mail, Loader2, CheckCircle2 } from "lucide-react";
+import { Mail, Loader2, CheckCircle2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,6 +24,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Separator } from "@/components/ui/separator";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -30,9 +33,12 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [isAdminLoading, setIsAdminLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [submittedEmail, setSubmittedEmail] = useState("");
+  const [error, setError] = useState("");
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -43,6 +49,7 @@ export default function LoginPage() {
 
   async function onSubmit(data: LoginFormValues) {
     setIsLoading(true);
+    setError("");
     try {
       const response = await fetch("/api/auth/magic-link", {
         method: "POST",
@@ -53,20 +60,47 @@ export default function LoginPage() {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to send login link");
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to send login link");
       }
 
       setSubmittedEmail(data.email);
       setIsSuccess(true);
-    } catch (error) {
+    } catch (err) {
       form.setError("email", {
         type: "manual",
         message:
-          error instanceof Error ? error.message : "Failed to send login link",
+          err instanceof Error ? err.message : "Failed to send login link",
       });
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function handleAdminLogin() {
+    setIsAdminLoading(true);
+    setError("");
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username: "admin", password: "admin" }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Login failed");
+      }
+
+      // Redirect to admin portal
+      router.push(data.redirectTo || "/admin");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setIsAdminLoading(false);
     }
   }
 
@@ -111,15 +145,55 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center px-4 bg-muted/30">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-            <Mail className="h-6 w-6 text-primary" />
+          <div className="mx-auto mb-4 flex items-center gap-2">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
+              <Dumbbell className="h-6 w-6 text-primary-foreground" />
+            </div>
           </div>
-          <CardTitle className="text-2xl">Welcome back</CardTitle>
+          <CardTitle className="text-2xl text-foreground">Peak Performance Lab</CardTitle>
           <CardDescription>
-            Sign in to Peak Performance Lab
+            Sign in to your account
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-6">
+          {/* Test Admin Login */}
+          <div className="space-y-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full bg-amber-50 border-amber-200 hover:bg-amber-100 text-amber-900"
+              onClick={handleAdminLogin}
+              disabled={isAdminLoading}
+            >
+              {isAdminLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="mr-2 h-4 w-4" />
+                  Test Admin Login (admin/admin)
+                </>
+              )}
+            </Button>
+            {error && (
+              <p className="text-sm text-red-600 text-center">{error}</p>
+            )}
+          </div>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <Separator className="w-full" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground">
+                Or continue with email
+              </span>
+            </div>
+          </div>
+
+          {/* Magic Link Form */}
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
@@ -152,7 +226,7 @@ export default function LoginPage() {
               </Button>
             </form>
           </Form>
-          <p className="mt-4 text-center text-sm text-muted-foreground">
+          <p className="text-center text-sm text-muted-foreground">
             We&apos;ll send you a magic link for a password-free sign in.
           </p>
         </CardContent>

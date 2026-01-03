@@ -1,6 +1,5 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { Loader2, Package, ExternalLink, Clock, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,171 +12,29 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-
-interface ClientPackage {
-  id: string;
-  name: string;
-  description: string;
-  sessionsUsed: number;
-  sessionsTotal: number;
-  purchasedAt: string;
-  expiresAt: string | null;
-  status: "active" | "expired" | "depleted";
-  serviceType: string;
-}
-
-interface AvailablePackage {
-  id: string;
-  name: string;
-  description: string;
-  sessions: number;
-  price: number;
-  pricePerSession: number;
-  validityDays: number | null;
-  serviceType: string;
-  popular?: boolean;
-}
-
-interface PackagesData {
-  clientPackages: ClientPackage[];
-  availablePackages: AvailablePackage[];
-}
-
-// Mock data - replace with actual API calls
-const mockPackagesData: PackagesData = {
-  clientPackages: [
-    {
-      id: "1",
-      name: "Personal Training (10 Sessions)",
-      description: "One-on-one personal training sessions",
-      sessionsUsed: 3,
-      sessionsTotal: 10,
-      purchasedAt: "2024-11-01",
-      expiresAt: "2025-05-01",
-      status: "active",
-      serviceType: "Personal Training",
-    },
-    {
-      id: "2",
-      name: "Recovery Pack (5 Sessions)",
-      description: "Any recovery service - dry needling, cupping, IASTM, or stretch therapy",
-      sessionsUsed: 2,
-      sessionsTotal: 5,
-      purchasedAt: "2024-12-01",
-      expiresAt: null,
-      status: "active",
-      serviceType: "Recovery",
-    },
-    {
-      id: "3",
-      name: "Golf Fitness (8 Sessions)",
-      description: "Golf-specific fitness training",
-      sessionsUsed: 8,
-      sessionsTotal: 8,
-      purchasedAt: "2024-08-15",
-      expiresAt: "2025-02-15",
-      status: "depleted",
-      serviceType: "Golf Fitness",
-    },
-  ],
-  availablePackages: [
-    {
-      id: "pkg-1",
-      name: "Personal Training Starter",
-      description: "Perfect for getting started with personal training",
-      sessions: 5,
-      price: 450,
-      pricePerSession: 90,
-      validityDays: 90,
-      serviceType: "Personal Training",
-    },
-    {
-      id: "pkg-2",
-      name: "Personal Training Pro",
-      description: "Our most popular training package",
-      sessions: 10,
-      price: 850,
-      pricePerSession: 85,
-      validityDays: 180,
-      serviceType: "Personal Training",
-      popular: true,
-    },
-    {
-      id: "pkg-3",
-      name: "Personal Training Elite",
-      description: "Maximum value for committed athletes",
-      sessions: 20,
-      price: 1500,
-      pricePerSession: 75,
-      validityDays: 365,
-      serviceType: "Personal Training",
-    },
-    {
-      id: "pkg-4",
-      name: "Golf Fitness Pack",
-      description: "Specialized golf fitness training",
-      sessions: 8,
-      price: 880,
-      pricePerSession: 110,
-      validityDays: 180,
-      serviceType: "Golf Fitness",
-    },
-    {
-      id: "pkg-5",
-      name: "Recovery Essentials",
-      description: "Any recovery service - dry needling, cupping, IASTM, stretch therapy",
-      sessions: 5,
-      price: 300,
-      pricePerSession: 60,
-      validityDays: null,
-      serviceType: "Recovery",
-    },
-    {
-      id: "pkg-6",
-      name: "Recovery Premium",
-      description: "Extended recovery package for optimal results",
-      sessions: 10,
-      price: 550,
-      pricePerSession: 55,
-      validityDays: null,
-      serviceType: "Recovery",
-      popular: true,
-    },
-  ],
-};
-
-async function fetchPackagesData(): Promise<PackagesData> {
-  // In production, this would be an API call
-  return new Promise((resolve) => {
-    setTimeout(() => resolve(mockPackagesData), 500);
-  });
-}
-
-async function initiateCheckout(packageId: string): Promise<string> {
-  // In production, this would call /api/payments/checkout
-  // and return a Stripe checkout URL
-  console.log("Initiating checkout for package:", packageId);
-  return new Promise((resolve) => {
-    setTimeout(() => resolve("https://checkout.stripe.com/..."), 500);
-  });
-}
+import { useClientPackages, useAvailablePackages } from "@/lib/hooks/use-api";
+import { usePurchasePackage } from "@/hooks/use-payments";
 
 export default function PackagesPage() {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["packages"],
-    queryFn: fetchPackagesData,
-  });
+  const {
+    data: clientPackagesData,
+    isLoading: clientPackagesLoading,
+    error: clientPackagesError,
+  } = useClientPackages();
 
-  const handlePurchase = async (packageId: string) => {
-    try {
-      const checkoutUrl = await initiateCheckout(packageId);
-      // In production, redirect to Stripe checkout
-      console.log("Redirect to:", checkoutUrl);
-      // window.location.href = checkoutUrl;
-      alert("In production, this would redirect to Stripe checkout");
-    } catch (error) {
-      console.error("Failed to initiate checkout:", error);
-    }
+  const {
+    data: availablePackagesData,
+    isLoading: availablePackagesLoading,
+    error: availablePackagesError,
+  } = useAvailablePackages();
+
+  const purchasePackage = usePurchasePackage();
+
+  const isLoading = clientPackagesLoading || availablePackagesLoading;
+  const error = clientPackagesError || availablePackagesError;
+
+  const handlePurchase = (packageId: number) => {
+    purchasePackage.mutate(packageId);
   };
 
   if (isLoading) {
@@ -196,17 +53,37 @@ export default function PackagesPage() {
     );
   }
 
-  const { clientPackages, availablePackages } = data!;
-  const activePackages = clientPackages.filter((pkg) => pkg.status === "active");
+  const activePackages = clientPackagesData?.data?.active || [];
+  const inactivePackages = clientPackagesData?.data?.inactive || [];
+  const availablePackages = availablePackagesData?.data || [];
 
-  // Group available packages by service type
-  const packagesByType = availablePackages.reduce((acc, pkg) => {
-    if (!acc[pkg.serviceType]) {
-      acc[pkg.serviceType] = [];
-    }
-    acc[pkg.serviceType].push(pkg);
-    return acc;
-  }, {} as Record<string, AvailablePackage[]>);
+  // Group available packages by determining service type from name
+  const packagesByType = availablePackages.reduce(
+    (acc, pkg) => {
+      let serviceType = "Personal Training";
+      if (pkg.name.toLowerCase().includes("golf")) {
+        serviceType = "Golf Fitness";
+      } else if (pkg.name.toLowerCase().includes("recovery")) {
+        serviceType = "Recovery";
+      }
+
+      if (!acc[serviceType]) {
+        acc[serviceType] = [];
+      }
+      acc[serviceType].push({
+        ...pkg,
+        pricePerSession: (parseFloat(pkg.price) / pkg.sessionCount).toFixed(2),
+        popular: pkg.sessionCount === 10, // Mark 10-session packages as popular
+      });
+      return acc;
+    },
+    {} as Record<
+      string,
+      Array<
+        (typeof availablePackages)[0] & { pricePerSession: string; popular: boolean }
+      >
+    >
+  );
 
   return (
     <div className="space-y-8">
@@ -234,7 +111,6 @@ export default function PackagesPage() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {activePackages.map((pkg) => {
-              const sessionsRemaining = pkg.sessionsTotal - pkg.sessionsUsed;
               const percentUsed = (pkg.sessionsUsed / pkg.sessionsTotal) * 100;
 
               return (
@@ -260,7 +136,7 @@ export default function PackagesPage() {
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Sessions</span>
                         <span className="font-medium">
-                          {sessionsRemaining} of {pkg.sessionsTotal} remaining
+                          {pkg.sessionsRemaining} of {pkg.sessionsTotal} remaining
                         </span>
                       </div>
                       <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
@@ -281,9 +157,11 @@ export default function PackagesPage() {
                       </div>
                     )}
 
-                    <p className="text-sm text-muted-foreground">
-                      {pkg.description}
-                    </p>
+                    {pkg.description && (
+                      <p className="text-sm text-muted-foreground">
+                        {pkg.description}
+                      </p>
+                    )}
                   </CardContent>
                 </Card>
               );
@@ -292,39 +170,34 @@ export default function PackagesPage() {
         )}
 
         {/* History of depleted/expired packages */}
-        {clientPackages.filter((pkg) => pkg.status !== "active").length > 0 && (
+        {inactivePackages.length > 0 && (
           <details className="group">
             <summary className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-              <span>
-                View package history (
-                {clientPackages.filter((pkg) => pkg.status !== "active").length})
-              </span>
+              <span>View package history ({inactivePackages.length})</span>
             </summary>
             <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {clientPackages
-                .filter((pkg) => pkg.status !== "active")
-                .map((pkg) => (
-                  <Card key={pkg.id} className="opacity-60">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <CardTitle className="text-base">{pkg.name}</CardTitle>
-                          <CardDescription className="mt-1">
-                            {pkg.serviceType}
-                          </CardDescription>
-                        </div>
-                        <Badge variant="outline">
-                          {pkg.status === "depleted" ? "Used" : "Expired"}
-                        </Badge>
+              {inactivePackages.map((pkg) => (
+                <Card key={pkg.id} className="opacity-60">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <CardTitle className="text-base">{pkg.name}</CardTitle>
+                        <CardDescription className="mt-1">
+                          {pkg.serviceType}
+                        </CardDescription>
                       </div>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-muted-foreground">
-                        {pkg.sessionsUsed} of {pkg.sessionsTotal} sessions used
-                      </p>
-                    </CardContent>
-                  </Card>
-                ))}
+                      <Badge variant="outline">
+                        {pkg.status === "depleted" ? "Used" : "Expired"}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">
+                      {pkg.sessionsUsed} of {pkg.sessionsTotal} sessions used
+                    </p>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           </details>
         )}
@@ -365,10 +238,10 @@ export default function PackagesPage() {
                   <CardContent className="space-y-4">
                     <div className="flex items-baseline gap-1">
                       <span className="text-3xl font-bold">
-                        ${pkg.price}
+                        ${parseFloat(pkg.price).toFixed(0)}
                       </span>
                       <span className="text-sm text-muted-foreground">
-                        / {pkg.sessions} sessions
+                        / {pkg.sessionCount} sessions
                       </span>
                     </div>
 
@@ -391,9 +264,19 @@ export default function PackagesPage() {
                       className="w-full"
                       variant={pkg.popular ? "default" : "outline"}
                       onClick={() => handlePurchase(pkg.id)}
+                      disabled={purchasePackage.isPending}
                     >
-                      Purchase
-                      <ExternalLink className="ml-2 h-4 w-4" />
+                      {purchasePackage.isPending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          Purchase
+                          <ExternalLink className="ml-2 h-4 w-4" />
+                        </>
+                      )}
                     </Button>
                   </CardContent>
                 </Card>
@@ -401,6 +284,18 @@ export default function PackagesPage() {
             </div>
           </div>
         ))}
+
+        {availablePackages.length === 0 && (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Package className="mb-4 h-12 w-12 text-muted-foreground" />
+              <h3 className="text-lg font-medium">No packages available</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Check back later for available packages
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </section>
     </div>
   );

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
 import { Loader2, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,141 +13,82 @@ import {
 } from "@/components/ui/card";
 import {
   BookingWizard,
-  Service,
-  ActivePackage,
   BookingData,
 } from "@/components/shared/BookingWizard";
 import Link from "next/link";
-
-// Mock data - replace with actual API calls
-const mockServices: Service[] = [
-  {
-    id: "1",
-    name: "Personal Training Session",
-    description: "One-on-one personal training tailored to your goals",
-    duration: 60,
-    price: 100,
-    category: "Training",
-  },
-  {
-    id: "2",
-    name: "Golf Fitness Assessment",
-    description: "Comprehensive golf-specific fitness evaluation",
-    duration: 90,
-    price: 150,
-    category: "Training",
-  },
-  {
-    id: "3",
-    name: "Golf Performance Training",
-    description: "Specialized training to improve your golf game",
-    duration: 60,
-    price: 120,
-    category: "Training",
-  },
-  {
-    id: "4",
-    name: "Dry Needling Session",
-    description: "Targeted dry needling for muscle release and pain relief",
-    duration: 45,
-    price: 85,
-    category: "Recovery",
-  },
-  {
-    id: "5",
-    name: "IASTM Treatment",
-    description: "Instrument-assisted soft tissue mobilization",
-    duration: 30,
-    price: 65,
-    category: "Recovery",
-  },
-  {
-    id: "6",
-    name: "Cupping Therapy",
-    description: "Traditional cupping for improved circulation and recovery",
-    duration: 30,
-    price: 55,
-    category: "Recovery",
-  },
-  {
-    id: "7",
-    name: "Stretch Therapy",
-    description: "Assisted stretching for improved flexibility",
-    duration: 45,
-    price: 70,
-    category: "Recovery",
-  },
-  {
-    id: "8",
-    name: "Kinesio Taping",
-    description: "Athletic taping for support and pain relief",
-    duration: 20,
-    price: 35,
-    category: "Recovery",
-  },
-];
-
-const mockActivePackages: ActivePackage[] = [
-  {
-    id: "pkg-1",
-    name: "Personal Training (10 Sessions)",
-    sessionsRemaining: 7,
-    serviceId: "1",
-  },
-  {
-    id: "pkg-2",
-    name: "Recovery Pack (5 Sessions)",
-    sessionsRemaining: 3,
-    serviceId: "4",
-  },
-];
-
-interface BookingFormData {
-  services: Service[];
-  activePackages: ActivePackage[];
-}
-
-async function fetchBookingData(): Promise<BookingFormData> {
-  // In production, this would be an API call
-  return new Promise((resolve) => {
-    setTimeout(
-      () =>
-        resolve({
-          services: mockServices,
-          activePackages: mockActivePackages,
-        }),
-      500
-    );
-  });
-}
+import { toast } from "sonner";
+import {
+  useServices,
+  useClientPackages,
+  useCreateBooking,
+  type Service,
+} from "@/lib/hooks/use-api";
 
 export default function BookPage() {
   const router = useRouter();
   const [bookingComplete, setBookingComplete] = useState(false);
-  const [bookingDetails, setBookingDetails] = useState<BookingData | null>(
-    null
-  );
+  const [bookingDetails, setBookingDetails] = useState<BookingData | null>(null);
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["bookingData"],
-    queryFn: fetchBookingData,
-  });
+  // Fetch services from API
+  const {
+    data: servicesData,
+    isLoading: servicesLoading,
+    error: servicesError,
+  } = useServices();
+
+  // Fetch client packages from API
+  const {
+    data: packagesData,
+    isLoading: packagesLoading,
+  } = useClientPackages();
+
+  // Create booking mutation
+  const createBookingMutation = useCreateBooking();
+
+  const isLoading = servicesLoading || packagesLoading;
 
   const handleBookingComplete = async (booking: BookingData) => {
-    // In production, this would submit to the API
-    console.log("Booking submitted:", booking);
+    try {
+      // Find the selected time slot in ISO format from availability
+      // For now, construct the scheduled datetime from date and time
+      const [timePart, ampm] = booking.time.split(" ");
+      const [hours, minutes] = timePart.split(":").map(Number);
+      let hour24 = hours;
+      if (ampm?.toUpperCase() === "PM" && hours !== 12) {
+        hour24 = hours + 12;
+      } else if (ampm?.toUpperCase() === "AM" && hours === 12) {
+        hour24 = 0;
+      }
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+      const scheduledAt = new Date(booking.date);
+      scheduledAt.setHours(hour24, minutes, 0, 0);
 
-    // If not using package, redirect to Stripe checkout
-    if (!booking.usePackage) {
-      // In production: redirect to /api/payments/checkout
-      console.log("Redirecting to Stripe checkout...");
+      // Create the booking via API
+      await createBookingMutation.mutateAsync({
+        serviceId: parseInt(booking.serviceId, 10),
+        scheduledAt: scheduledAt.toISOString(),
+        locationType: booking.locationType,
+        locationAddress: booking.location,
+        notes: booking.notes,
+      });
+
+      // If not using package, redirect to Stripe checkout
+      if (!booking.usePackage) {
+        // TODO: Redirect to /api/payments/checkout
+        // For now, just show success
+        toast.success("Booking created! Payment integration pending.");
+      } else {
+        toast.success("Booking created successfully using package session!");
+      }
+
+      setBookingDetails(booking);
+      setBookingComplete(true);
+    } catch (error) {
+      console.error("Booking failed:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to create booking"
+      );
     }
-
-    setBookingDetails(booking);
-    setBookingComplete(true);
   };
 
   const handleCancel = () => {
@@ -163,17 +103,35 @@ export default function BookPage() {
     );
   }
 
-  if (error) {
+  if (servicesError) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center">
+      <div className="flex min-h-[400px] flex-col items-center justify-center">
         <p className="text-destructive">Failed to load booking data</p>
+        <Button
+          variant="outline"
+          className="mt-4"
+          onClick={() => window.location.reload()}
+        >
+          Try Again
+        </Button>
       </div>
     );
   }
 
+  // Transform services data for BookingWizard
+  const services: Service[] = servicesData?.data || [];
+
+  // Transform packages data for BookingWizard
+  const activePackages = (packagesData?.data?.active || []).map((pkg) => ({
+    id: pkg.id,
+    name: pkg.name,
+    sessionsRemaining: pkg.sessionsRemaining,
+    serviceId: pkg.packageId?.toString(),
+  }));
+
   if (bookingComplete && bookingDetails) {
-    const service = data?.services.find(
-      (s) => s.id === bookingDetails.serviceId
+    const service = services.find(
+      (s) => s.id.toString() === bookingDetails.serviceId
     );
 
     return (
@@ -221,7 +179,7 @@ export default function BookPage() {
                 {bookingDetails.location && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Location</span>
-                    <span className="font-medium text-right max-w-[200px]">
+                    <span className="max-w-[200px] text-right font-medium">
                       {bookingDetails.location}
                     </span>
                   </div>
@@ -257,8 +215,8 @@ export default function BookPage() {
       </div>
 
       <BookingWizard
-        services={data?.services || []}
-        activePackages={data?.activePackages || []}
+        services={services}
+        activePackages={activePackages}
         onComplete={handleBookingComplete}
         onCancel={handleCancel}
       />

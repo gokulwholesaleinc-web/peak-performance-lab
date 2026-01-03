@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
 import {
   format,
   startOfWeek,
@@ -9,7 +8,6 @@ import {
   eachDayOfInterval,
   addWeeks,
   subWeeks,
-  isSameDay,
   addDays,
   isToday,
 } from "date-fns";
@@ -31,117 +29,14 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useBookings, type Booking } from "@/hooks/use-api";
 
-interface Appointment {
-  id: string;
-  clientId: string;
-  clientName: string;
-  clientEmail: string;
-  serviceId: string;
-  serviceName: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  status: "scheduled" | "confirmed" | "completed" | "cancelled";
-  notes?: string;
-}
-
-// Fetch appointments for a date range
-async function fetchAppointments(
-  startDate: string,
-  endDate: string
-): Promise<Appointment[]> {
-  const response = await fetch(
-    `/api/bookings?startDate=${startDate}&endDate=${endDate}`
-  );
-  if (!response.ok) {
-    // Return mock data if API not available
-    const mockAppointments: Appointment[] = [
-      {
-        id: "1",
-        clientId: "c1",
-        clientName: "John Smith",
-        clientEmail: "john@example.com",
-        serviceId: "s1",
-        serviceName: "Personal Training",
-        date: format(new Date(), "yyyy-MM-dd"),
-        startTime: "09:00",
-        endTime: "10:00",
-        status: "confirmed",
-        notes: "Focus on upper body strength",
-      },
-      {
-        id: "2",
-        clientId: "c2",
-        clientName: "Sarah Johnson",
-        clientEmail: "sarah@example.com",
-        serviceId: "s2",
-        serviceName: "Golf Fitness",
-        date: format(new Date(), "yyyy-MM-dd"),
-        startTime: "10:30",
-        endTime: "11:30",
-        status: "scheduled",
-      },
-      {
-        id: "3",
-        clientId: "c3",
-        clientName: "Mike Davis",
-        clientEmail: "mike@example.com",
-        serviceId: "s3",
-        serviceName: "Dry Needling",
-        date: format(new Date(), "yyyy-MM-dd"),
-        startTime: "13:00",
-        endTime: "13:45",
-        status: "confirmed",
-      },
-      {
-        id: "4",
-        clientId: "c4",
-        clientName: "Emily Brown",
-        clientEmail: "emily@example.com",
-        serviceId: "s4",
-        serviceName: "Stretching Session",
-        date: format(addDays(new Date(), 1), "yyyy-MM-dd"),
-        startTime: "10:00",
-        endTime: "10:30",
-        status: "scheduled",
-      },
-      {
-        id: "5",
-        clientId: "c5",
-        clientName: "Robert Wilson",
-        clientEmail: "robert@example.com",
-        serviceId: "s1",
-        serviceName: "Personal Training",
-        date: format(addDays(new Date(), 1), "yyyy-MM-dd"),
-        startTime: "14:00",
-        endTime: "15:00",
-        status: "confirmed",
-      },
-      {
-        id: "6",
-        clientId: "c6",
-        clientName: "Lisa Chen",
-        clientEmail: "lisa@example.com",
-        serviceId: "s5",
-        serviceName: "Cupping Therapy",
-        date: format(addDays(new Date(), 2), "yyyy-MM-dd"),
-        startTime: "11:00",
-        endTime: "11:30",
-        status: "scheduled",
-      },
-    ];
-    return mockAppointments;
-  }
-  return response.json();
-}
-
-function getStatusColor(status: Appointment["status"]) {
+function getStatusColor(status: Booking["status"]) {
   switch (status) {
     case "confirmed":
       return "default";
-    case "scheduled":
+    case "pending":
       return "secondary";
     case "completed":
       return "outline";
@@ -152,11 +47,11 @@ function getStatusColor(status: Appointment["status"]) {
   }
 }
 
-function getStatusBgColor(status: Appointment["status"]) {
+function getStatusBgColor(status: Booking["status"]) {
   switch (status) {
     case "confirmed":
       return "bg-green-100 border-green-300 dark:bg-green-950 dark:border-green-800";
-    case "scheduled":
+    case "pending":
       return "bg-blue-100 border-blue-300 dark:bg-blue-950 dark:border-blue-800";
     case "completed":
       return "bg-gray-100 border-gray-300 dark:bg-gray-950 dark:border-gray-800";
@@ -173,43 +68,46 @@ const timeSlots = Array.from({ length: 12 }, (_, i) => {
   return `${hour.toString().padStart(2, "0")}:00`;
 });
 
+function formatAppointmentTime(scheduledAt: string, durationMins: number) {
+  const start = new Date(scheduledAt);
+  const end = new Date(start.getTime() + durationMins * 60 * 1000);
+  return {
+    startTime: format(start, "HH:mm"),
+    endTime: format(end, "HH:mm"),
+  };
+}
+
 export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<"week" | "day">("week");
-  const [selectedAppointment, setSelectedAppointment] =
-    useState<Appointment | null>(null);
+  const [selectedAppointment, setSelectedAppointment] = useState<Booking | null>(null);
 
   // Calculate week boundaries
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 }); // Start on Monday
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
-  // Fetch appointments
-  const { data: appointments, isLoading } = useQuery({
-    queryKey: [
-      "calendar-appointments",
-      format(weekStart, "yyyy-MM-dd"),
-      format(weekEnd, "yyyy-MM-dd"),
-    ],
-    queryFn: () =>
-      fetchAppointments(
-        format(weekStart, "yyyy-MM-dd"),
-        format(weekEnd, "yyyy-MM-dd")
-      ),
+  // Fetch appointments for the current week
+  const { data: bookingsResponse, isLoading } = useBookings({
+    startDate: format(weekStart, "yyyy-MM-dd"),
+    endDate: format(weekEnd, "yyyy-MM-dd"),
+    limit: 100,
   });
+
+  const appointments = bookingsResponse?.data || [];
 
   // Group appointments by date
   const appointmentsByDate = useMemo(() => {
-    if (!appointments) return {};
     return appointments.reduce(
       (acc, appointment) => {
-        if (!acc[appointment.date]) {
-          acc[appointment.date] = [];
+        const dateKey = format(new Date(appointment.scheduledAt), "yyyy-MM-dd");
+        if (!acc[dateKey]) {
+          acc[dateKey] = [];
         }
-        acc[appointment.date].push(appointment);
+        acc[dateKey].push(appointment);
         return acc;
       },
-      {} as Record<string, Appointment[]>
+      {} as Record<string, Booking[]>
     );
   }, [appointments]);
 
@@ -292,7 +190,7 @@ export default function CalendarPage() {
         <div className="grid grid-cols-7 gap-2">
           {weekDays.map((day) => {
             const dateKey = format(day, "yyyy-MM-dd");
-            const dayAppointments = appointmentsByDate[dateKey] || [];
+            const dayAppointmentsList = appointmentsByDate[dateKey] || [];
             const isCurrentDay = isToday(day);
 
             return (
@@ -325,23 +223,26 @@ export default function CalendarPage() {
                 <CardContent className="p-2">
                   <ScrollArea className="h-32">
                     <div className="space-y-1">
-                      {dayAppointments.length > 0 ? (
-                        dayAppointments
-                          .sort((a, b) => a.startTime.localeCompare(b.startTime))
-                          .map((appointment) => (
-                            <button
-                              key={appointment.id}
-                              onClick={() => setSelectedAppointment(appointment)}
-                              className={`w-full text-left rounded border p-1.5 text-xs transition-colors hover:opacity-80 ${getStatusBgColor(appointment.status)}`}
-                            >
-                              <div className="font-medium truncate">
-                                {appointment.startTime} - {appointment.clientName}
-                              </div>
-                              <div className="text-muted-foreground truncate">
-                                {appointment.serviceName}
-                              </div>
-                            </button>
-                          ))
+                      {dayAppointmentsList.length > 0 ? (
+                        dayAppointmentsList
+                          .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+                          .map((appointment) => {
+                            const { startTime } = formatAppointmentTime(appointment.scheduledAt, appointment.durationMins);
+                            return (
+                              <button
+                                key={appointment.id}
+                                onClick={() => setSelectedAppointment(appointment)}
+                                className={`w-full text-left rounded border p-1.5 text-xs transition-colors hover:opacity-80 ${getStatusBgColor(appointment.status)}`}
+                              >
+                                <div className="font-medium truncate">
+                                  {startTime} - {appointment.client.name}
+                                </div>
+                                <div className="text-muted-foreground truncate">
+                                  {appointment.service.name}
+                                </div>
+                              </button>
+                            );
+                          })
                       ) : (
                         <p className="text-xs text-muted-foreground text-center py-4">
                           No appointments
@@ -361,7 +262,7 @@ export default function CalendarPage() {
             <div className="space-y-1">
               {timeSlots.map((time) => {
                 const slotAppointments = dayAppointments.filter((apt) => {
-                  const aptHour = parseInt(apt.startTime.split(":")[0]);
+                  const aptHour = new Date(apt.scheduledAt).getHours();
                   const slotHour = parseInt(time.split(":")[0]);
                   return aptHour === slotHour;
                 });
@@ -377,31 +278,34 @@ export default function CalendarPage() {
                     <div className="flex-1 py-2 pl-4">
                       {slotAppointments.length > 0 ? (
                         <div className="space-y-1">
-                          {slotAppointments.map((appointment) => (
-                            <button
-                              key={appointment.id}
-                              onClick={() => setSelectedAppointment(appointment)}
-                              className={`w-full text-left rounded border p-2 transition-colors hover:opacity-80 ${getStatusBgColor(appointment.status)}`}
-                            >
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <span className="font-medium">
-                                    {appointment.clientName}
-                                  </span>
-                                  <span className="mx-2 text-muted-foreground">
-                                    |
-                                  </span>
-                                  <span>{appointment.serviceName}</span>
+                          {slotAppointments.map((appointment) => {
+                            const { startTime, endTime } = formatAppointmentTime(appointment.scheduledAt, appointment.durationMins);
+                            return (
+                              <button
+                                key={appointment.id}
+                                onClick={() => setSelectedAppointment(appointment)}
+                                className={`w-full text-left rounded border p-2 transition-colors hover:opacity-80 ${getStatusBgColor(appointment.status)}`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <span className="font-medium">
+                                      {appointment.client.name}
+                                    </span>
+                                    <span className="mx-2 text-muted-foreground">
+                                      |
+                                    </span>
+                                    <span>{appointment.service.name}</span>
+                                  </div>
+                                  <Badge variant={getStatusColor(appointment.status)}>
+                                    {appointment.status}
+                                  </Badge>
                                 </div>
-                                <Badge variant={getStatusColor(appointment.status)}>
-                                  {appointment.status}
-                                </Badge>
-                              </div>
-                              <div className="text-sm text-muted-foreground">
-                                {appointment.startTime} - {appointment.endTime}
-                              </div>
-                            </button>
-                          ))}
+                                <div className="text-sm text-muted-foreground">
+                                  {startTime} - {endTime}
+                                </div>
+                              </button>
+                            );
+                          })}
                         </div>
                       ) : null}
                     </div>
@@ -432,9 +336,9 @@ export default function CalendarPage() {
                   <User className="h-6 w-6" />
                 </div>
                 <div>
-                  <p className="font-medium">{selectedAppointment.clientName}</p>
+                  <p className="font-medium">{selectedAppointment.client.name}</p>
                   <p className="text-sm text-muted-foreground">
-                    {selectedAppointment.clientEmail}
+                    {selectedAppointment.client.email}
                   </p>
                 </div>
               </div>
@@ -444,7 +348,7 @@ export default function CalendarPage() {
                   <CalendarIcon className="h-4 w-4 text-muted-foreground" />
                   <span>
                     {format(
-                      new Date(selectedAppointment.date),
+                      new Date(selectedAppointment.scheduledAt),
                       "EEEE, MMMM d, yyyy"
                     )}
                   </span>
@@ -452,8 +356,13 @@ export default function CalendarPage() {
                 <div className="flex items-center gap-2">
                   <Clock className="h-4 w-4 text-muted-foreground" />
                   <span>
-                    {selectedAppointment.startTime} -{" "}
-                    {selectedAppointment.endTime}
+                    {(() => {
+                      const { startTime, endTime } = formatAppointmentTime(
+                        selectedAppointment.scheduledAt,
+                        selectedAppointment.durationMins
+                      );
+                      return `${startTime} - ${endTime}`;
+                    })()}
                   </span>
                 </div>
               </div>
@@ -461,7 +370,10 @@ export default function CalendarPage() {
               <div className="rounded-lg border p-3">
                 <p className="text-sm font-medium">Service</p>
                 <p className="text-muted-foreground">
-                  {selectedAppointment.serviceName}
+                  {selectedAppointment.service.name}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  ${parseFloat(selectedAppointment.service.price).toFixed(2)} - {selectedAppointment.durationMins} min
                 </p>
               </div>
 
@@ -477,6 +389,16 @@ export default function CalendarPage() {
                   <p className="text-sm font-medium">Notes</p>
                   <p className="text-sm text-muted-foreground">
                     {selectedAppointment.notes}
+                  </p>
+                </div>
+              )}
+
+              {selectedAppointment.locationAddress && (
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm font-medium">Location</p>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedAppointment.locationType === "mobile" ? "Mobile: " : "Virtual: "}
+                    {selectedAppointment.locationAddress}
                   </p>
                 </div>
               )}

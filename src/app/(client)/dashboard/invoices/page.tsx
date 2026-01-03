@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import {
   Loader2,
   Receipt,
@@ -14,9 +13,6 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import {
   Table,
@@ -42,148 +38,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { cn } from "@/lib/utils";
-
-interface InvoiceItem {
-  description: string;
-  quantity: number;
-  unitPrice: number;
-  total: number;
-}
-
-interface Invoice {
-  id: string;
-  number: string;
-  date: string;
-  dueDate: string;
-  status: "paid" | "pending" | "overdue" | "cancelled";
-  amount: number;
-  items: InvoiceItem[];
-  paymentMethod?: string;
-  paidAt?: string;
-}
-
-// Mock data - replace with actual API calls
-const mockInvoices: Invoice[] = [
-  {
-    id: "1",
-    number: "INV-2024-001",
-    date: "2024-12-01",
-    dueDate: "2024-12-15",
-    status: "paid",
-    amount: 150.0,
-    items: [
-      {
-        description: "Personal Training Session",
-        quantity: 1,
-        unitPrice: 100,
-        total: 100,
-      },
-      {
-        description: "Dry Needling Session",
-        quantity: 1,
-        unitPrice: 50,
-        total: 50,
-      },
-    ],
-    paymentMethod: "Visa ending in 4242",
-    paidAt: "2024-12-10",
-  },
-  {
-    id: "2",
-    number: "INV-2024-002",
-    date: "2024-12-15",
-    dueDate: "2025-01-15",
-    status: "pending",
-    amount: 500.0,
-    items: [
-      {
-        description: "Personal Training Pro Package (10 Sessions)",
-        quantity: 1,
-        unitPrice: 500,
-        total: 500,
-      },
-    ],
-  },
-  {
-    id: "3",
-    number: "INV-2024-003",
-    date: "2024-11-15",
-    dueDate: "2024-12-01",
-    status: "overdue",
-    amount: 85.0,
-    items: [
-      {
-        description: "Dry Needling Session",
-        quantity: 1,
-        unitPrice: 85,
-        total: 85,
-      },
-    ],
-  },
-  {
-    id: "4",
-    number: "INV-2024-004",
-    date: "2024-11-01",
-    dueDate: "2024-11-15",
-    status: "paid",
-    amount: 120.0,
-    items: [
-      {
-        description: "Golf Performance Training",
-        quantity: 1,
-        unitPrice: 120,
-        total: 120,
-      },
-    ],
-    paymentMethod: "Mastercard ending in 5555",
-    paidAt: "2024-11-14",
-  },
-  {
-    id: "5",
-    number: "INV-2024-005",
-    date: "2024-10-15",
-    dueDate: "2024-10-30",
-    status: "cancelled",
-    amount: 70.0,
-    items: [
-      {
-        description: "Stretch Therapy",
-        quantity: 1,
-        unitPrice: 70,
-        total: 70,
-      },
-    ],
-  },
-];
-
-async function fetchInvoices(): Promise<Invoice[]> {
-  // In production, this would be an API call
-  return new Promise((resolve) => {
-    setTimeout(() => resolve(mockInvoices), 500);
-  });
-}
-
-async function initiatePayment(invoiceId: string): Promise<string> {
-  // In production, this would call /api/payments/checkout
-  console.log("Initiating payment for invoice:", invoiceId);
-  return new Promise((resolve) => {
-    setTimeout(() => resolve("https://checkout.stripe.com/..."), 500);
-  });
-}
-
-async function downloadInvoice(invoiceId: string): Promise<void> {
-  // In production, this would download the invoice PDF
-  console.log("Downloading invoice:", invoiceId);
-  alert("In production, this would download the invoice PDF");
-}
+import { toast } from "sonner";
+import { useInvoices, type Invoice } from "@/lib/hooks/use-api";
+import { usePayInvoice } from "@/hooks/use-payments";
 
 const statusConfig = {
   paid: {
     label: "Paid",
     className: "bg-green-500/10 text-green-600",
   },
-  pending: {
+  sent: {
     label: "Pending",
     className: "bg-yellow-500/10 text-yellow-600",
   },
@@ -195,27 +59,42 @@ const statusConfig = {
     label: "Cancelled",
     className: "bg-muted text-muted-foreground",
   },
+  draft: {
+    label: "Draft",
+    className: "bg-muted text-muted-foreground",
+  },
 };
 
 export default function InvoicesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [page, setPage] = useState(1);
 
-  const { data: invoices, isLoading, error } = useQuery({
-    queryKey: ["invoices"],
-    queryFn: fetchInvoices,
+  const {
+    data: invoicesData,
+    isLoading,
+    error,
+  } = useInvoices({
+    status: statusFilter === "all" ? undefined : statusFilter,
+    page,
+    limit: 20,
   });
 
-  const handlePayInvoice = async (invoiceId: string) => {
-    try {
-      const checkoutUrl = await initiatePayment(invoiceId);
-      // In production, redirect to Stripe checkout
-      console.log("Redirect to:", checkoutUrl);
-      // window.location.href = checkoutUrl;
-      alert("In production, this would redirect to Stripe checkout");
-    } catch (error) {
-      console.error("Failed to initiate payment:", error);
+  const payInvoice = usePayInvoice();
+
+  const handlePayInvoice = (invoiceId: string) => {
+    // Convert string ID to number for the API
+    const numericId = parseInt(invoiceId, 10);
+    if (isNaN(numericId)) {
+      toast.error("Invalid invoice ID");
+      return;
     }
+    payInvoice.mutate(numericId);
+  };
+
+  const handleDownloadInvoice = (invoiceId: string) => {
+    // TODO: Download PDF invoice
+    toast.info("PDF download coming soon. Invoice ID: " + invoiceId);
   };
 
   if (isLoading) {
@@ -234,24 +113,19 @@ export default function InvoicesPage() {
     );
   }
 
-  const filteredInvoices =
-    statusFilter === "all"
-      ? invoices
-      : invoices?.filter((inv) => inv.status === statusFilter);
+  const invoices = invoicesData?.data || [];
+  const pagination = invoicesData?.pagination;
 
-  const totalPending =
-    invoices
-      ?.filter((inv) => inv.status === "pending" || inv.status === "overdue")
-      .reduce((acc, inv) => acc + inv.amount, 0) || 0;
+  const totalPending = invoices
+    .filter((inv) => inv.status === "sent" || inv.status === "overdue")
+    .reduce((acc, inv) => acc + inv.amount, 0);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Invoices</h1>
-          <p className="text-muted-foreground">
-            View and pay your invoices
-          </p>
+          <p className="text-muted-foreground">View and pay your invoices</p>
         </div>
         {totalPending > 0 && (
           <Card className="w-fit">
@@ -274,7 +148,7 @@ export default function InvoicesPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Invoices</SelectItem>
-            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="sent">Pending</SelectItem>
             <SelectItem value="overdue">Overdue</SelectItem>
             <SelectItem value="paid">Paid</SelectItem>
             <SelectItem value="cancelled">Cancelled</SelectItem>
@@ -283,7 +157,7 @@ export default function InvoicesPage() {
       </div>
 
       {/* Invoices Table */}
-      {filteredInvoices?.length === 0 ? (
+      {invoices.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Receipt className="mb-4 h-12 w-12 text-muted-foreground" />
@@ -291,7 +165,7 @@ export default function InvoicesPage() {
             <p className="mt-1 text-sm text-muted-foreground">
               {statusFilter === "all"
                 ? "Your invoices will appear here"
-                : `No ${statusFilter} invoices`}
+                : `No ${statusFilter === "sent" ? "pending" : statusFilter} invoices`}
             </p>
           </CardContent>
         </Card>
@@ -309,8 +183,10 @@ export default function InvoicesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredInvoices?.map((invoice) => {
-                const status = statusConfig[invoice.status];
+              {invoices.map((invoice) => {
+                const status =
+                  statusConfig[invoice.status as keyof typeof statusConfig] ||
+                  statusConfig.draft;
                 return (
                   <TableRow key={invoice.id}>
                     <TableCell className="font-medium">
@@ -320,7 +196,9 @@ export default function InvoicesPage() {
                       {new Date(invoice.date).toLocaleDateString()}
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
-                      {new Date(invoice.dueDate).toLocaleDateString()}
+                      {invoice.dueDate
+                        ? new Date(invoice.dueDate).toLocaleDateString()
+                        : "-"}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={status.className}>
@@ -342,18 +220,25 @@ export default function InvoicesPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => downloadInvoice(invoice.id)}
+                          onClick={() => handleDownloadInvoice(invoice.id)}
                         >
                           <Download className="h-4 w-4" />
                         </Button>
-                        {(invoice.status === "pending" ||
+                        {(invoice.status === "sent" ||
                           invoice.status === "overdue") && (
                           <Button
                             size="sm"
                             onClick={() => handlePayInvoice(invoice.id)}
+                            disabled={payInvoice.isPending}
                           >
-                            Pay
-                            <ExternalLink className="ml-2 h-4 w-4" />
+                            {payInvoice.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <>
+                                Pay
+                                <ExternalLink className="ml-2 h-4 w-4" />
+                              </>
+                            )}
                           </Button>
                         )}
                       </div>
@@ -363,6 +248,35 @@ export default function InvoicesPage() {
               })}
             </TableBody>
           </Table>
+
+          {/* Pagination */}
+          {pagination && pagination.totalPages > 1 && (
+            <div className="flex items-center justify-between border-t p-4">
+              <p className="text-sm text-muted-foreground">
+                Showing {(page - 1) * pagination.limit + 1} to{" "}
+                {Math.min(page * pagination.limit, pagination.total)} of{" "}
+                {pagination.total} invoices
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!pagination.hasMore}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
@@ -386,33 +300,38 @@ export default function InvoicesPage() {
               <div className="flex items-center justify-between">
                 <Badge
                   variant="outline"
-                  className={statusConfig[selectedInvoice.status].className}
+                  className={
+                    statusConfig[
+                      selectedInvoice.status as keyof typeof statusConfig
+                    ]?.className || ""
+                  }
                 >
-                  {statusConfig[selectedInvoice.status].label}
+                  {statusConfig[
+                    selectedInvoice.status as keyof typeof statusConfig
+                  ]?.label || selectedInvoice.status}
                 </Badge>
                 <p className="text-sm text-muted-foreground">
-                  Due: {new Date(selectedInvoice.dueDate).toLocaleDateString()}
+                  Due:{" "}
+                  {selectedInvoice.dueDate
+                    ? new Date(selectedInvoice.dueDate).toLocaleDateString()
+                    : "N/A"}
                 </p>
               </div>
 
               <Separator />
 
               <div className="space-y-3">
-                <h4 className="font-medium">Items</h4>
-                {selectedInvoice.items.map((item, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <div>
-                      <p>{item.description}</p>
-                      <p className="text-muted-foreground">
-                        {item.quantity} x ${item.unitPrice.toFixed(2)}
-                      </p>
-                    </div>
-                    <p className="font-medium">${item.total.toFixed(2)}</p>
-                  </div>
-                ))}
+                <h4 className="font-medium">Invoice Details</h4>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Invoice Number</span>
+                  <span className="font-medium">{selectedInvoice.number}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Date</span>
+                  <span className="font-medium">
+                    {new Date(selectedInvoice.date).toLocaleDateString()}
+                  </span>
+                </div>
               </div>
 
               <Separator />
@@ -424,13 +343,12 @@ export default function InvoicesPage() {
                 </span>
               </div>
 
-              {selectedInvoice.status === "paid" && (
+              {selectedInvoice.status === "paid" && selectedInvoice.paidAt && (
                 <div className="rounded-lg bg-green-500/10 p-3 text-sm text-green-600">
                   <p className="font-medium">Payment received</p>
                   <p>
-                    {selectedInvoice.paymentMethod} -{" "}
-                    {selectedInvoice.paidAt &&
-                      new Date(selectedInvoice.paidAt).toLocaleDateString()}
+                    Paid on{" "}
+                    {new Date(selectedInvoice.paidAt).toLocaleDateString()}
                   </p>
                 </div>
               )}
@@ -439,19 +357,26 @@ export default function InvoicesPage() {
                 <Button
                   variant="outline"
                   className="flex-1"
-                  onClick={() => downloadInvoice(selectedInvoice.id)}
+                  onClick={() => handleDownloadInvoice(selectedInvoice.id)}
                 >
                   <Download className="mr-2 h-4 w-4" />
                   Download PDF
                 </Button>
-                {(selectedInvoice.status === "pending" ||
+                {(selectedInvoice.status === "sent" ||
                   selectedInvoice.status === "overdue") && (
                   <Button
                     className="flex-1"
                     onClick={() => handlePayInvoice(selectedInvoice.id)}
+                    disabled={payInvoice.isPending}
                   >
-                    Pay Now
-                    <ExternalLink className="ml-2 h-4 w-4" />
+                    {payInvoice.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        Pay Now
+                        <ExternalLink className="ml-2 h-4 w-4" />
+                      </>
+                    )}
                   </Button>
                 )}
               </div>
