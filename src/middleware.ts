@@ -10,6 +10,8 @@ const publicRoutes = [
   '/login',
   '/api/auth/magic-link',
   '/api/auth/verify',
+  '/api/health',
+  '/api/payments/webhook',
 ];
 
 // Routes that start with these prefixes are public
